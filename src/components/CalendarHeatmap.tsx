@@ -3,6 +3,7 @@
 // horizontally scrollable, tooltip on hover, AccentFocus at varying opacity.
 
 import React, { useState, useMemo } from 'react';
+import { motion } from 'framer-motion';
 
 export interface DayData {
   date: string;     // ISO date string YYYY-MM-DD
@@ -61,6 +62,7 @@ const CalendarHeatmap: React.FC<CalendarHeatmapProps> = ({
   year = new Date().getFullYear(),
 }) => {
   const [_tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [hoveredCoords, setHoveredCoords] = useState<{ w: number, d: number } | null>(null);
 
   const dataMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -136,14 +138,24 @@ const CalendarHeatmap: React.FC<CalendarHeatmapProps> = ({
           <div className="heatmap" style={{ gap: GAP }}>
             {weeks.map((week, wi) => (
               <div key={wi} className="heatmap__week">
-                {week.map((day) => {
+                {week.map((day, di) => {
                   const level = day.isInYear ? getIntensityLevel(day.minutes, maxMinutes) : 0;
                   const d = new Date(day.date);
                   const label = `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: ${day.minutes} min focused`;
+                  
+                  const dist = hoveredCoords ? Math.max(Math.abs(wi - hoveredCoords.w), Math.abs(di - hoveredCoords.d)) : Infinity;
+                  let scale = 1;
+                  let zIndex = 0;
+                  let brightness = 1;
+                  if (dist === 0) { scale = 1.35; zIndex = 10; brightness = 1.2; }
+                  else if (dist === 1) { scale = 1.15; zIndex = 5; brightness = 1.1; }
+
                   return (
-                    <div
+                    <motion.div
                       key={day.date}
                       className={`heatmap__cell${level > 0 ? ` heatmap__cell--l${level}` : ''}`}
+                      animate={{ scale, zIndex, filter: `brightness(${brightness})` }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 25 }}
                       style={{ opacity: day.isInYear ? 1 : 0.3 }}
                       title={day.isInYear ? label : ''}
                       role={day.isInYear ? 'button' : undefined}
@@ -151,10 +163,14 @@ const CalendarHeatmap: React.FC<CalendarHeatmapProps> = ({
                       tabIndex={day.isInYear ? 0 : undefined}
                       onMouseEnter={(e) => {
                         if (!day.isInYear) return;
+                        setHoveredCoords({ w: wi, d: di });
                         const rect = e.currentTarget.getBoundingClientRect();
                         setTooltip({ text: label, x: rect.x, y: rect.y });
                       }}
-                      onMouseLeave={() => setTooltip(null)}
+                      onMouseLeave={() => {
+                        setHoveredCoords(null);
+                        setTooltip(null);
+                      }}
                     />
                   );
                 })}

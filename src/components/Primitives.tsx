@@ -40,8 +40,16 @@ export const Toggle: React.FC<ToggleProps> = ({ checked, onChange, label, disabl
       />
       <motion.div
         className="toggle__thumb"
-        animate={{ x: checked ? 18 : 0 }}
-        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+        variants={{
+          off: { x: 0, scaleX: [1, 1.4, 1] },
+          on: { x: 18, scaleX: [1, 1.4, 1] }
+        }}
+        initial={checked ? "on" : "off"}
+        animate={checked ? "on" : "off"}
+        transition={{
+          x: { type: 'spring', stiffness: 500, damping: 30 },
+          scaleX: { duration: 0.25, ease: 'easeInOut' }
+        }}
       />
     </label>
   </div>
@@ -102,40 +110,62 @@ interface StepperProps {
 
 export const Stepper: React.FC<StepperProps> = ({
   value, onChange, min = 0, max = 100, step = 1, label, unit = ''
-}) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
-    {label && <span className="text-body">{label}</span>}
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-      <button
-        className="btn btn-icon"
-        style={{ width: 32, height: 32 }}
-        onClick={() => onChange(Math.max(min, value - step))}
-        disabled={value <= min}
-        aria-label="Decrease"
-      >
-        <Minus size={14} />
-      </button>
-      <span
-        style={{
-          minWidth: 48, textAlign: 'center',
-          fontSize: 'var(--fs-body)', fontWeight: 600,
-          fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)'
-        }}
-      >
-        {value}{unit}
-      </span>
-      <button
-        className="btn btn-icon"
-        style={{ width: 32, height: 32 }}
-        onClick={() => onChange(Math.min(max, value + step))}
-        disabled={value >= max}
-        aria-label="Increase"
-      >
-        <Plus size={14} />
-      </button>
+}) => {
+  const prev = React.useRef(value);
+  const dir = value > prev.current ? 1 : -1;
+  React.useEffect(() => { prev.current = value; }, [value]);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+      {label && <span className="text-body">{label}</span>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <button
+          className="btn btn-icon"
+          style={{ width: 32, height: 32 }}
+          onClick={() => onChange(Math.max(min, value - step))}
+          disabled={value <= min}
+          aria-label="Decrease"
+        >
+          <Minus size={14} />
+        </button>
+        <div style={{ position: 'relative', minWidth: 90, height: 24, overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <AnimatePresence mode="popLayout" custom={dir} initial={false}>
+            <motion.span
+              key={value}
+              custom={dir}
+              variants={{
+                initial: (d: number) => ({ y: d * 20, opacity: 0 }),
+                animate: { y: 0, opacity: 1 },
+                exit: (d: number) => ({ y: -d * 20, opacity: 0 })
+              }}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              style={{
+                position: 'absolute',
+                fontSize: 'var(--fs-body)', fontWeight: 600,
+                fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {value}{unit}
+            </motion.span>
+          </AnimatePresence>
+        </div>
+        <button
+          className="btn btn-icon"
+          style={{ width: 32, height: 32 }}
+          onClick={() => onChange(Math.min(max, value + step))}
+          disabled={value >= max}
+          aria-label="Increase"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 export interface TabItem {
@@ -154,10 +184,12 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, active, onChange }) => (
   <div
     role="tablist"
     style={{
-      display: 'flex',
+      display: 'inline-flex',
       gap: 'var(--space-1)',
-      borderBottom: '1px solid var(--border-subtle)',
-      paddingBottom: 'var(--space-1)',
+      background: 'var(--bg-surface)',
+      padding: '4px',
+      borderRadius: 'var(--radius-full)',
+      border: '1px solid var(--border-subtle)',
     }}
   >
     {tabs.map((t) => (
@@ -169,30 +201,44 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, active, onChange }) => (
         aria-controls={`panel-${t.id}`}
         onClick={() => onChange(t.id)}
         style={{
+          position: 'relative',
           padding: 'var(--space-2) var(--space-4)',
-          borderRadius: 'var(--radius-sm)',
+          borderRadius: 'var(--radius-full)',
           border: 'none',
           background: 'transparent',
           cursor: 'pointer',
           fontFamily: 'var(--font-sans)',
           fontSize: 'var(--fs-caption)',
-          fontWeight: 600,
-          color: t.id === active ? 'var(--accent-focus)' : 'var(--text-secondary)',
-          borderBottom: t.id === active ? '2px solid var(--accent-focus)' : '2px solid transparent',
-          transition: 'color 0.15s, border-color 0.15s',
+          fontWeight: t.id === active ? 600 : 500,
+          color: t.id === active ? '#fff' : 'var(--text-secondary)',
+          transition: 'color 0.2s',
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--space-2)',
+          zIndex: 1
         }}
       >
+        {t.id === active && (
+          <motion.div
+            layoutId="activeTabIndicator"
+            style={{
+              position: 'absolute', inset: 0,
+              background: 'var(--accent-focus)',
+              borderRadius: 'var(--radius-full)',
+              zIndex: -1,
+            }}
+            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+          />
+        )}
         {t.label}
         {t.badge !== undefined && (
           <span style={{
-            background: 'var(--accent-focus-subtle)',
-            color: 'var(--accent-focus)',
+            background: t.id === active ? 'rgba(255,255,255,0.2)' : 'var(--border-strong)',
+            color: t.id === active ? '#fff' : 'var(--text-primary)',
             borderRadius: 'var(--radius-full)',
             padding: '1px 6px',
             fontSize: 'var(--fs-micro)',
+            transition: 'background 0.2s, color 0.2s'
           }}>
             {t.badge}
           </span>

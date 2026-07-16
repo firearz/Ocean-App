@@ -7,8 +7,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useOceanStore } from '../store/useOceanStore';
 import { GhostButton } from '../components/Buttons';
 
+import { useShallow } from 'zustand/react/shallow';
+
 const BreatheScreen: React.FC = () => {
-  const { beginFocusing, settings } = useOceanStore();
+  const { beginFocusing, settings } = useOceanStore(
+    useShallow((s) => ({
+      beginFocusing: s.beginFocusing,
+      settings: s.settings,
+    }))
+  );
   const totalBreaths = settings.breathCount || 3;
 
   const [breathPhase, setBreathPhase] = useState<'in' | 'out'>('in');
@@ -72,6 +79,7 @@ const BreatheScreen: React.FC = () => {
 
       {/* Breathing circle */}
       <motion.div
+        initial={{ scale: 0.68 }}
         animate={{ scale }}
         transition={{
           duration: breathPhase === 'in' ? 4 : 7,

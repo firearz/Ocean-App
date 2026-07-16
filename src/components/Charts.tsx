@@ -3,6 +3,7 @@
 // Uses the 8-hue category palette; pure SVG/CSS, no external chart library.
 
 import React from 'react';
+import { motion } from 'framer-motion';
 
 // ── Shared types ───────────────────────────────────────────────────────────
 export interface ChartSegment {
@@ -68,16 +69,16 @@ export const DonutChart: React.FC<DonutChartProps> = ({
             cumulativeDeg += fraction * 360;
 
             return (
-              <circle
+              <motion.circle
                 key={i}
                 cx={cx} cy={cy} r={r}
                 fill="none"
                 stroke={seg.color}
                 strokeWidth={strokeWidth}
-                strokeDasharray={`${dash} ${gap}`}
-                strokeDashoffset={offset}
                 strokeLinecap="round"
-                style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                initial={{ strokeDasharray: `0 ${circ}`, strokeDashoffset: offset }}
+                animate={{ strokeDasharray: `${dash} ${gap}`, strokeDashoffset: offset }}
+                transition={{ duration: 1, ease: 'easeOut', delay: i * 0.1 }}
               />
             );
           })}
@@ -165,14 +166,15 @@ export const BarChart: React.FC<BarChartProps> = ({ days, height = 120 }) => {
               height: height + 24,
             }}
           >
-            <div
+            <motion.div
+              initial={{ height: 0 }}
+              animate={{ height: barH }}
+              transition={{ type: 'spring', stiffness: 200, damping: 15, delay: i * 0.05 }}
               style={{
                 width: '100%',
-                height: barH,
                 background: color,
                 borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
                 opacity: day.minutes > 0 ? 1 : 0.18,
-                transition: 'height 0.4s var(--ease-spring)',
                 minWidth: 8,
               }}
             />

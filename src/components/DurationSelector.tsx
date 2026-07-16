@@ -52,15 +52,41 @@ const DurationSelector: React.FC<DurationSelectorProps> = ({
         {PRESETS.map((p) => {
           const active = p.value === -1 ? isCustom || showStepper : value === p.value;
           return (
-            <button
+            <motion.button
               key={p.label}
-              className={`duration-selector__option${active ? ' duration-selector__option--active' : ''}`}
+              className="duration-selector__option"
               onClick={() => handleSelect(p.value)}
               aria-pressed={active}
               aria-label={p.value === -1 ? 'Custom duration' : `${p.value} minutes`}
+              whileHover={{ scale: active ? 1 : 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              style={{
+                position: 'relative',
+                background: 'transparent',
+                color: active ? '#fff' : 'var(--text-secondary)',
+                zIndex: 1,
+                transition: 'color 0.2s',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px 16px',
+              }}
             >
+              {active && (
+                <motion.div
+                  layoutId="activeDurationPill"
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'var(--accent-focus)',
+                    borderRadius: 'var(--radius-full)',
+                    zIndex: -1,
+                    boxShadow: '0 2px 8px rgba(var(--accent-focus-rgb), 0.3)'
+                  }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                />
+              )}
               {p.value === -1 && isCustom ? `${customVal} min` : p.label}
-            </button>
+            </motion.button>
           );
         })}
       </div>
@@ -68,13 +94,16 @@ const DurationSelector: React.FC<DurationSelectorProps> = ({
       <AnimatePresence>
         {showStepper && (
           <motion.div
-            initial={{ opacity: 0, y: -8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0,  scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.95 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-            className="card card--elevated"
-            style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 16 }}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            style={{ overflow: 'hidden' }}
           >
+            <div
+              className="card card--elevated"
+              style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 16, margin: '4px' }}
+            >
             <button
               className="btn btn-icon"
               style={{ width: 32, height: 32 }}
@@ -110,6 +139,7 @@ const DurationSelector: React.FC<DurationSelectorProps> = ({
             >
               Set
             </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

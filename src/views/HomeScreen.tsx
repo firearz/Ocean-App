@@ -11,6 +11,8 @@ import DurationSelector from '../components/DurationSelector';
 import { CategoryPillRow } from '../components/CategoryPill';
 import { PrimaryButton } from '../components/Buttons';
 
+import { useShallow } from 'zustand/react/shallow';
+
 function getGreeting(): string {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning.';
@@ -21,8 +23,19 @@ function getGreeting(): string {
 const HomeScreen: React.FC = () => {
   const {
     categories, recentIntentions, sessions, settings,
-    startSession, addCategory, addToast
-  } = useOceanStore();
+    startSession, addCategory, addToast, removeRecentIntention
+  } = useOceanStore(
+    useShallow((s) => ({
+      categories: s.categories,
+      recentIntentions: s.recentIntentions,
+      sessions: s.sessions,
+      settings: s.settings,
+      startSession: s.startSession,
+      addCategory: s.addCategory,
+      addToast: s.addToast,
+      removeRecentIntention: s.removeRecentIntention,
+    }))
+  );
 
   const [intention,   setIntention]   = useState('');
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
@@ -31,7 +44,7 @@ const HomeScreen: React.FC = () => {
   // Today stats
   const todayStr = new Date().toDateString();
   const todaySessions = sessions.filter(s =>
-    s.phaseType === 'focus' && new Date(s.startedAt).toDateString() === todayStr && s.status === 'completed'
+    new Date(s.startedAt).toDateString() === todayStr && s.status === 'completed'
   );
   const todayMinutes  = Math.round(todaySessions.reduce((a, s) => a + s.actualDurationSec / 60, 0));
 
@@ -80,6 +93,7 @@ const HomeScreen: React.FC = () => {
             value={intention}
             onChange={setIntention}
             recentIntentions={recentIntentions}
+            onRemoveRecent={removeRecentIntention}
           />
         </motion.div>
 
@@ -90,11 +104,10 @@ const HomeScreen: React.FC = () => {
           transition={{ delay: 0.15, duration: 0.3 }}
         >
           <CategoryPillRow
-            categories={categories}
+            categories={categories.filter(c => !c.isArchived)}
             selected={selectedCat}
             onSelect={(cat) => setSelectedCat(selectedCat === cat.id ? null : cat.id)}
             onAdd={(name, colorHex) => addCategory(name, colorHex)}
-            isPro={settings.isPro}
           />
         </motion.div>
 
@@ -149,12 +162,6 @@ const HomeScreen: React.FC = () => {
   );
 };
 
-// Fix — sessions don't have phaseType in current store model, add a helper
-// (store uses SessionRecord with phaseType field as designed)
-declare module '../store/useOceanStore' {
-  interface SessionRecord {
-    phaseType: 'focus' | 'break' | 'long_break';
-  }
-}
+
 
 export default HomeScreen;

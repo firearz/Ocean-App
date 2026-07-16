@@ -4,22 +4,67 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pause, Play, StopCircle, Plus, Lock, Minimize2 } from 'lucide-react';
+import { Pause, Play, StopCircle, Plus, Minus, Lock, Minimize2, CheckSquare } from 'lucide-react';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { Window } from '@tauri-apps/api/window';
 import { useOceanStore } from '../store/useOceanStore';
 import RingTimer from '../components/RingTimer';
 import { IconButton, GhostButton } from '../components/Buttons';
 import { CategoryPill } from '../components/CategoryPill';
+import { TaskItem } from '../components/TaskItem';
+
+import { useShallow } from 'zustand/react/shallow';
+
+// Generate random organic border radii for the liquid blob
+const blobShapes = [
+  "60% 40% 30% 70% / 60% 30% 70% 40%",
+  "30% 70% 70% 30% / 30% 30% 70% 70%",
+  "50% 50% 20% 80% / 25% 80% 20% 75%",
+  "40% 60% 70% 30% / 40% 50% 50% 60%",
+  "70% 30% 50% 50% / 30% 30% 70% 70%",
+];
+
+const MorphingBlob: React.FC<{ reducedMotion: boolean }> = ({ reducedMotion }) => {
+  if (reducedMotion) return null;
+  return (
+    <motion.div
+      animate={{ borderRadius: blobShapes }}
+      transition={{ repeat: Infinity, duration: 8, ease: "easeInOut", repeatType: "mirror" }}
+      style={{
+        position: 'absolute',
+        top: 10, left: 10, right: 10, bottom: 10,
+        background: 'var(--accent-focus-subtle)',
+        zIndex: -1,
+        opacity: 0.8,
+        filter: 'blur(8px)'
+      }}
+    />
+  );
+};
 
 const ActiveSessionScreen: React.FC = () => {
   const {
     phase, remaining, activeSession, glow,
     categories,
-    pauseSession, resumeSession, extendSession, endEarly,
-  } = useOceanStore();
+    pauseSession, resumeSession, extendSession, endEarly, tasks
+  } = useOceanStore(
+    useShallow((s) => ({
+      phase: s.phase,
+      remaining: s.remaining,
+      activeSession: s.activeSession,
+      glow: s.glow,
+      categories: s.categories,
+      pauseSession: s.pauseSession,
+      resumeSession: s.resumeSession,
+      extendSession: s.extendSession,
+      endEarly: s.endEarly,
+      tasks: s.tasks,
+    }))
+  );
 
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [showTasks, setShowTasks] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
 
   const isPaused     = phase === 'paused';
   const totalSec     = (activeSession?.durationMin ?? 25) * 60;
@@ -41,9 +86,9 @@ const ActiveSessionScreen: React.FC = () => {
     <div
       className="session-screen"
       style={{
-        background: `radial-gradient(ellipse 80% 60% at 50% 30%,
+        backgroundImage: `radial-gradient(ellipse 80% 60% at 50% 30%,
           rgba(var(--accent-focus-rgb), ${isPaused ? 0.03 : 0.06}) 0%,
-          var(--bg-canvas) 70%)`,
+          transparent 70%)`,
       }}
     >
       {/* Live region for screen reader announcements */}
@@ -66,6 +111,62 @@ const ActiveSessionScreen: React.FC = () => {
       >
         <Lock size={11} />
         <span>Focus mode active</span>
+      </div>
+
+      {/* Tasks Popup Button */}
+      <div style={{ position: 'absolute', top: '50%', right: 20, transform: 'translateY(-50%)', zIndex: 50 }}>
+        <IconButton
+          label="View Tasks"
+          onClick={() => setShowTasks(!showTasks)}
+          style={{ background: showTasks || isPinned ? 'var(--accent-focus)' : 'var(--bg-surface)', color: showTasks || isPinned ? '#fff' : 'var(--text-primary)' }}
+        >
+          <CheckSquare size={20} />
+        </IconButton>
+        
+        <AnimatePresence>
+          {(showTasks || isPinned) && (
+            <motion.div
+              drag
+              dragMomentum={false}
+              initial={{ opacity: 0, scale: 0.9, x: 20, y: 0, transformOrigin: 'right center' }}
+              animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, x: 20, y: 0 }}
+              style={{
+                position: 'absolute', top: '50%', right: 60, width: 320, maxHeight: 400,
+                transform: 'translateY(-50%)',
+                background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-subtle)',
+                overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 12,
+                cursor: 'grab'
+              }}
+              whileDrag={{ cursor: 'grabbing', scale: 1.02, boxShadow: 'var(--shadow-float)' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'grab' }}>
+                <h3 className="text-h2" style={{ margin: 0, fontSize: 16 }}>Tasks</h3>
+                <IconButton 
+                  size={24} 
+                  label={isPinned ? "Unpin window" : "Pin window"} 
+                  onClick={() => setIsPinned(!isPinned)}
+                  style={{ color: isPinned ? 'var(--accent-focus)' : 'var(--text-tertiary)' }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="17" x2="12" y2="22"></line>
+                    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+                  </svg>
+                </IconButton>
+              </div>
+              {tasks.filter(t => !t.completed).length === 0 ? (
+                <p className="text-tertiary text-micro" style={{ textAlign: 'center', padding: '20px 0' }}>All caught up!</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, cursor: 'default' }}>
+                  {tasks.filter(t => !t.completed).map(task => (
+                    <TaskItem key={task.id} task={task} dragEnabled={false} />
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Paused overlay */}
@@ -97,7 +198,9 @@ const ActiveSessionScreen: React.FC = () => {
         initial={{ scale: 0.85, opacity: 0 }}
         animate={{ scale: 1, opacity: isPaused ? 0.7 : 1 }}
         transition={{ type: 'spring', stiffness: 220, damping: 24 }}
+        style={{ position: 'relative' }}
       >
+        <MorphingBlob reducedMotion={useOceanStore(s => s.settings?.reducedMotion ?? false)} />
         <RingTimer
           size={320}
           strokeWidth={8}
@@ -151,6 +254,7 @@ const ActiveSessionScreen: React.FC = () => {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
+        style={{ position: 'relative', zIndex: 10 }}
       >
         {/* Switch to Mini Player */}
         <IconButton
@@ -168,6 +272,14 @@ const ActiveSessionScreen: React.FC = () => {
           }}
         >
           <Minimize2 size={18} />
+        </IconButton>
+
+        {/* Reduce -5 */}
+        <IconButton
+          label="Reduce session by 5 minutes"
+          onClick={() => extendSession(-5)}
+        >
+          <Minus size={18} />
         </IconButton>
 
         {/* Extend +5 */}

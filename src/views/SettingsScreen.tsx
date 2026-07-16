@@ -3,10 +3,11 @@
 
 import React, { useState } from 'react';
 import { useOceanStore } from '../store/useOceanStore';
+import { useShallow } from 'zustand/react/shallow';
 import { Toggle, Slider, Stepper } from '../components/Primitives';
 import { GhostButton, PrimaryButton } from '../components/Buttons';
 import {
-  Timer, Music, ShieldOff, Bell, User, CreditCard, Info, Palette
+  Timer, Music, ShieldOff, Bell, User, Info, Palette
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -16,7 +17,6 @@ const SECTIONS = [
   { id: 'blocking',     label: 'Blocking',      icon: ShieldOff   },
   { id: 'notifications',label: 'Notifications', icon: Bell        },
   { id: 'account',      label: 'Account',       icon: User        },
-  { id: 'subscription', label: 'Subscription',  icon: CreditCard  },
   { id: 'about',        label: 'About',         icon: Info        },
 ] as const;
 
@@ -40,21 +40,25 @@ const SettingRow: React.FC<{
 
 // ── 1. Timer ───────────────────────────────────────────────────────────────
 const TimerSection: React.FC = () => {
-  const { settings, updateSettings } = useOceanStore();
+  const { settings, updateSettings } = useOceanStore(
+    useShallow((s) => ({ settings: s.settings, updateSettings: s.updateSettings }))
+  );
+
+  const handleWorkDurationChange = (newWork: number) => {
+    const ratio = settings.breakDurationMin / settings.workDurationMin;
+    const newBreak = Math.max(1, Math.round(newWork * ratio));
+    updateSettings({ workDurationMin: newWork, breakDurationMin: newBreak });
+  };
+
   return (
     <div className="settings-card">
       <h2 className="text-h2">Timer</h2>
       <SettingRow label="Work duration"
-        control={<Stepper value={settings.workDurationMin} onChange={v => updateSettings({ workDurationMin: v })} min={1} max={180} step={5} unit=" min" />}
+        control={<Stepper value={settings.workDurationMin} onChange={handleWorkDurationChange} min={1} max={180} step={5} unit=" min" />}
       />
-      <SettingRow label="Short break duration"
+      <SettingRow label="Break duration"
+        description="This ratio is maintained for all your sessions."
         control={<Stepper value={settings.breakDurationMin} onChange={v => updateSettings({ breakDurationMin: v })} min={1} max={60} step={1} unit=" min" />}
-      />
-      <SettingRow label="Long break duration"
-        control={<Stepper value={settings.longBreakDurationMin} onChange={v => updateSettings({ longBreakDurationMin: v })} min={5} max={60} step={5} unit=" min" />}
-      />
-      <SettingRow label="Long break every"
-        control={<Stepper value={settings.longBreakInterval} onChange={v => updateSettings({ longBreakInterval: v })} min={2} max={8} step={1} unit=" sessions" />}
       />
       <SettingRow label="Breathing exercises"
         description="Number of breath cycles before each session"
@@ -82,7 +86,9 @@ const TimerSection: React.FC = () => {
 
 // ── 2. Appearance ──────────────────────────────────────────────────────────
 const AppearanceSection: React.FC = () => {
-  const { settings, updateSettings } = useOceanStore();
+  const { settings, updateSettings } = useOceanStore(
+    useShallow((s) => ({ settings: s.settings, updateSettings: s.updateSettings }))
+  );
   const themes = [
     { value: 'system', label: 'System' },
     { value: 'light',  label: 'Light'  },
@@ -102,12 +108,11 @@ const AppearanceSection: React.FC = () => {
                 aria-pressed={settings.theme === t.value}
                 style={{
                   padding: '6px 14px', cursor: 'pointer',
-                  borderRadius: 'var(--radius-full)', fontFamily: 'var(--font-sans)',
-                  fontSize: 'var(--fs-caption)', fontWeight: 600,
-                  background: settings.theme === t.value ? 'var(--accent-focus)' : 'var(--bg-surface)',
+                  borderRadius: 'var(--radius-full)', border: 'none',
+                  fontFamily: 'var(--font-sans)', fontSize: 'var(--fs-body)', fontWeight: 500,
+                  background: settings.theme === t.value ? 'var(--accent-focus)' : 'transparent',
                   color: settings.theme === t.value ? '#fff' : 'var(--text-secondary)',
-                  border: `1px solid ${settings.theme === t.value ? 'transparent' : 'var(--border-subtle)'}`,
-                  transition: 'all 0.15s',
+                  transition: 'background var(--dur-fast), color var(--dur-fast)'
                 }}
               >
                 {t.label}
@@ -116,13 +121,19 @@ const AppearanceSection: React.FC = () => {
           </div>
         }
       />
+      <SettingRow label="Reduced motion"
+        description="Disable fluid physics, gooey effects, and morphological animations"
+        control={<Toggle id="reduced-motion" checked={settings.reducedMotion} onChange={v => updateSettings({ reducedMotion: v })} />}
+      />
     </div>
   );
 };
 
 // ── 3. Sounds ─────────────────────────────────────────────────────────────
 const SoundsSection: React.FC = () => {
-  const { settings, updateSettings } = useOceanStore();
+  const { settings, updateSettings } = useOceanStore(
+    useShallow((s) => ({ settings: s.settings, updateSettings: s.updateSettings }))
+  );
   const packs = ['chime', 'marimba', 'wood', 'silent'] as const;
 
   return (
@@ -165,7 +176,9 @@ const SoundsSection: React.FC = () => {
 
 // ── 4. Blocking ────────────────────────────────────────────────────────────
 const BlockingSection: React.FC = () => {
-  const { settings, updateSettings, addToast } = useOceanStore();
+  const { settings, updateSettings, addToast } = useOceanStore(
+    useShallow((s) => ({ settings: s.settings, updateSettings: s.updateSettings, addToast: s.addToast }))
+  );
   return (
     <div className="settings-card">
       <h2 className="text-h2">App & Site Blocking</h2>
@@ -174,7 +187,7 @@ const BlockingSection: React.FC = () => {
         control={<Toggle id="focus-assist" checked={settings.focusAssistEnabled} onChange={v => updateSettings({ focusAssistEnabled: v })} />}
       />
       <SettingRow label="App & site blocklist"
-        description="Manage blocked apps and websites (Pro)"
+        description="Manage blocked apps and websites"
         control={
           <GhostButton size="sm" onClick={() => addToast('App blocking editor coming soon.', 'info')}>
             Manage
@@ -222,37 +235,6 @@ const AccountSection: React.FC = () => (
   </div>
 );
 
-// ── 7. Subscription ───────────────────────────────────────────────────────
-const SubscriptionSection: React.FC = () => {
-  const { settings } = useOceanStore();
-  return (
-    <div className="settings-card">
-      <h2 className="text-h2">Subscription</h2>
-      {settings.isPro ? (
-        <div>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '6px 14px', background: 'var(--accent-focus-subtle)',
-            borderRadius: 'var(--radius-full)', marginBottom: 'var(--space-4)',
-          }}>
-            <span style={{ color: 'var(--accent-focus)', fontWeight: 700, fontSize: 'var(--fs-caption)' }}>Ocean Pro — Active</span>
-          </div>
-          <p className="text-caption text-secondary">Your subscription is active. Thank you for supporting Ocean!</p>
-        </div>
-      ) : (
-        <>
-          <p className="text-body text-secondary" style={{ marginBottom: 'var(--space-6)', lineHeight: 1.7 }}>
-            Upgrade to Ocean Pro for unlimited categories, Insights, app blocking, and cloud sync.
-          </p>
-          <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-            <PrimaryButton>$4.99 / month</PrimaryButton>
-            <GhostButton>$39.99 / year — save 33%</GhostButton>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
 
 // ── 8. About ──────────────────────────────────────────────────────────────
 const AboutSection: React.FC = () => (
@@ -277,7 +259,6 @@ const SECTION_CONTENT: Record<SectionId, React.FC> = {
   blocking:      BlockingSection,
   notifications: NotificationsSection,
   account:       AccountSection,
-  subscription:  SubscriptionSection,
   about:         AboutSection,
 };
 

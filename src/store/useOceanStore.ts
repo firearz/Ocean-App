@@ -4,8 +4,8 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Category } from '../components/CategoryPill';
-import { ToastMessage } from '../components/Primitives';
+import type { Category } from '../components/CategoryPill';
+import type { ToastMessage } from '../components/Primitives';
 
 // ── Timer Phase ────────────────────────────────────────────────────────────
 export type SessionPhase =
@@ -15,7 +15,7 @@ export type SessionPhase =
   | 'paused'
   | 'reflecting'
   | 'onBreak'
-  | 'longBreak';
+  | 'endedEarly';
 
 // ── Session Record ─────────────────────────────────────────────────────────
 export interface SessionRecord {
@@ -33,13 +33,26 @@ export interface SessionRecord {
   source:           'manual' | 'scheduled' | 'api';
 }
 
+export interface ContextMenuItem {
+  id: string;
+  label: string;
+  icon?: React.ReactNode;
+  destructive?: boolean;
+  action: () => void;
+}
+
+export interface ContextMenuState {
+  x: number;
+  y: number;
+  items: ContextMenuItem[];
+}
+
 // ── Settings ───────────────────────────────────────────────────────────────
 export interface OceanSettings {
   theme:               'light' | 'dark' | 'system';
+  reducedMotion:       boolean;
   workDurationMin:     number;   // default 25
   breakDurationMin:    number;   // default 5
-  longBreakDurationMin:number;   // default 20
-  longBreakInterval:   number;   // every N sessions, default 4
   breathCount:         number;   // 0-12
   autoStartNext:       boolean;
   overflowEnabled:     boolean;
@@ -49,16 +62,21 @@ export interface OceanSettings {
   soundVolume:         number;   // 0-100
   focusAssistEnabled:  boolean;
   requireIntention:    boolean;
-  isPro:               boolean;
   hasCompletedOnboarding: boolean;
+}
+
+export interface TodoTask {
+  id: string;
+  text: string;
+  completed: boolean;
+  order: number;
 }
 
 const DEFAULT_SETTINGS: OceanSettings = {
   theme:               'system',
+  reducedMotion:       false,
   workDurationMin:     25,
   breakDurationMin:    5,
-  longBreakDurationMin:20,
-  longBreakInterval:   4,
   breathCount:         3,
   autoStartNext:       false,
   overflowEnabled:     false,
@@ -68,7 +86,6 @@ const DEFAULT_SETTINGS: OceanSettings = {
   soundVolume:         70,
   focusAssistEnabled:  false,
   requireIntention:    true,
-  isPro:               false,
   hasCompletedOnboarding: false,
 };
 
@@ -96,12 +113,16 @@ interface OceanStore {
   // Data
   categories:    Category[];
   sessions:      SessionRecord[];
+  // Recent intentions
   recentIntentions: string[];
+  removeRecentIntention: (intention: string) => void;
 
   // UI
   settings:      OceanSettings;
   toasts:        ToastMessage[];
   navExpanded:   boolean;
+  contextMenu:   ContextMenuState | null;
+  tasks:         TodoTask[];
 
   // ── Actions ──────────────────────────────────────────────────────────────
   startSession: (intention: string, categoryId: string | null, durationMin: number) => void;
@@ -113,15 +134,19 @@ interface OceanStore {
   endEarly: () => void;
   abortSession: () => void;
   completePhase: () => void;
+  dismissEndedEarly: () => void;
   tick: () => void;
 
   // Category CRUD
   addCategory:    (name: string, colorHex: string) => void;
-  removeCategory: (id: string) => void;
+  removeCategory: (id: string) => void; // Permanent delete
+  archiveCategory: (id: string) => void;
+  restoreCategory: (id: string) => void;
   updateCategory: (id: string, patch: Partial<Category>) => void;
 
   // Sessions
   saveSession: (record: Omit<SessionRecord, 'id'>) => void;
+  removeSession: (id: string) => void;
 
   // Settings
   updateSettings: (patch: Partial<OceanSettings>) => void;
@@ -131,6 +156,16 @@ interface OceanStore {
   removeToast:  (id: string) => void;
   setNavExpanded: (v: boolean) => void;
   applyTheme:   () => void;
+  
+  openContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void;
+  closeContextMenu: () => void;
+  
+  // Tasks
+  addTask: (text: string) => void;
+  toggleTask: (id: string) => void;
+  removeTask: (id: string) => void;
+  reorderTasks: (newTasks: TodoTask[]) => void;
+  clearCompletedTasks: () => void;
 }
 
 let tickInterval: ReturnType<typeof setInterval> | null = null;
@@ -152,6 +187,8 @@ export const useOceanStore = create<OceanStore>()(
       settings:         DEFAULT_SETTINGS,
       toasts:           [],
       navExpanded:      true,
+      contextMenu:      null,
+      tasks:            [],
 
       // ── Start breathing phase ────────────────────────────────────────────
       startBreathing: (intention, categoryId, durationMin) => {
@@ -175,6 +212,10 @@ export const useOceanStore = create<OceanStore>()(
           },
         });
       },
+
+      removeRecentIntention: (intention) => set(s => ({
+        recentIntentions: s.recentIntentions.filter(i => i !== intention)
+      })),
 
       startSession: (intention, categoryId, durationMin) => {
         get().startBreathing(intention, categoryId, durationMin);
@@ -204,7 +245,7 @@ export const useOceanStore = create<OceanStore>()(
       // ── Tick — drift-safe: remaining = endAtUtc - now ───────────────────
       tick: () => {
         const { phase, activeSession } = get();
-        if (!activeSession || (phase !== 'focusing' && phase !== 'onBreak' && phase !== 'longBreak')) return;
+        if (!activeSession || (phase !== 'focusing' && phase !== 'onBreak')) return;
 
         const remainMs = activeSession.endAtUtc.getTime() - Date.now();
         const remainSec = Math.max(0, Math.ceil(remainMs / 1000));
@@ -226,7 +267,29 @@ export const useOceanStore = create<OceanStore>()(
 
         if (phase === 'focusing') {
           set({ phase: 'reflecting', glow: false });
-        } else if (phase === 'onBreak' || phase === 'longBreak') {
+        } else if (phase === 'reflecting') {
+          // If remaining > 0, the session was ended early. Show the custom message screen instead of a break.
+          const { remaining } = get();
+          if (remaining > 0) {
+            set({ phase: 'endedEarly' });
+            return;
+          }
+
+          // Otherwise, dynamic proportional break
+          const breakRatio = settings.breakDurationMin / settings.workDurationMin;
+          const breakDur = Math.round(activeSession.durationMin * breakRatio) || 1;
+
+          set({
+            phase: 'onBreak',
+            activeSession: {
+              ...activeSession,
+              endAtUtc: new Date(Date.now() + breakDur * 60 * 1000),
+              sessionCount: activeSession.sessionCount + 1,
+            }
+          });
+          if (tickInterval) clearInterval(tickInterval);
+          tickInterval = setInterval(() => get().tick(), 1000);
+        } else if (phase === 'onBreak') {
           if (settings.autoStartNext) {
             get().startBreathing(
               activeSession.intention,
@@ -267,10 +330,19 @@ export const useOceanStore = create<OceanStore>()(
       },
 
       extendSession: (extraMin = 5) => {
-        const { activeSession } = get();
+        const { activeSession, phase } = get();
         if (!activeSession) return;
-        const newEnd = new Date(activeSession.endAtUtc.getTime() + extraMin * 60 * 1000);
-        set({ activeSession: { ...activeSession, endAtUtc: newEnd } });
+        
+        if (phase === 'paused') {
+          // If paused, just increase pausedRemainMs so it's correct when resumed
+          const newRemainMs = Math.max(0, activeSession.pausedRemainMs + extraMin * 60 * 1000);
+          set({ activeSession: { ...activeSession, pausedRemainMs: newRemainMs } });
+          set({ remaining: Math.ceil(newRemainMs / 1000) });
+        } else {
+          const newEndMs = Math.max(Date.now(), activeSession.endAtUtc.getTime() + extraMin * 60 * 1000);
+          set({ activeSession: { ...activeSession, endAtUtc: new Date(newEndMs) } });
+          get().tick();
+        }
       },
 
       endEarly: () => {
@@ -283,20 +355,28 @@ export const useOceanStore = create<OceanStore>()(
         set({ phase: 'idle', activeSession: null, remaining: 0, glow: false });
       },
 
-      // ── Category CRUD ────────────────────────────────────────────────────
+      dismissEndedEarly: () => {
+        if (tickInterval) clearInterval(tickInterval);
+        set({ phase: 'idle', activeSession: null, remaining: 0, glow: false });
+      },
+
       addCategory: (name, colorHex) => {
-        const { categories, settings } = get();
-        if (!settings.isPro && categories.length >= 3) {
-          get().addToast('Upgrade to Pro for unlimited categories.', 'info');
-          return;
-        }
+        const { categories } = get();
         const cat: Category = { id: `cat-${Date.now()}`, name, colorHex };
         set({ categories: [...categories, cat] });
       },
 
-      removeCategory: (id) => {
-        set((s) => ({ categories: s.categories.filter((c) => c.id !== id) }));
-      },
+      removeCategory: (id) => set(s => ({
+        categories: s.categories.filter(c => c.id !== id),
+      })),
+
+      archiveCategory: (id) => set(s => ({
+        categories: s.categories.map(c => c.id === id ? { ...c, isArchived: true } : c),
+      })),
+
+      restoreCategory: (id) => set(s => ({
+        categories: s.categories.map(c => c.id === id ? { ...c, isArchived: false } : c),
+      })),
 
       updateCategory: (id, patch) => {
         set((s) => ({
@@ -308,6 +388,9 @@ export const useOceanStore = create<OceanStore>()(
       saveSession: (record) => {
         const full: SessionRecord = { id: `sess-${Date.now()}`, ...record };
         set((s) => ({ sessions: [full, ...s.sessions] }));
+      },
+      removeSession: (id) => {
+        set((s) => ({ sessions: s.sessions.filter((sess) => sess.id !== id) }));
       },
 
       // ── Settings ─────────────────────────────────────────────────────────
@@ -341,6 +424,35 @@ export const useOceanStore = create<OceanStore>()(
       },
 
       setNavExpanded: (v) => set({ navExpanded: v }),
+
+      openContextMenu: (x, y, items) => {
+        set({ contextMenu: { x, y, items } });
+      },
+
+      closeContextMenu: () => {
+        set({ contextMenu: null });
+      },
+
+      // ── Task Actions ─────────────────────────────────────────────────────
+      addTask: (text) => set(s => ({
+        tasks: [...s.tasks, { id: `task-${Date.now()}`, text, completed: false, order: s.tasks.length }]
+      })),
+      toggleTask: (id) => set(s => ({
+        tasks: s.tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
+      })),
+      removeTask: (id) => set(s => ({
+        tasks: s.tasks.filter(t => t.id !== id)
+      })),
+      reorderTasks: (newTasks) => set(s => {
+        const nonReordered = s.tasks.filter(t => !newTasks.some(nt => nt.id === t.id));
+        const updatedReordered = newTasks.map((t, i) => ({ ...t, order: i }));
+        return {
+          tasks: [...updatedReordered, ...nonReordered]
+        };
+      }),
+      clearCompletedTasks: () => set(s => ({
+        tasks: s.tasks.filter(t => !t.completed)
+      })),
     }),
     {
       name:    'ocean-store',
@@ -349,6 +461,7 @@ export const useOceanStore = create<OceanStore>()(
         sessions:         s.sessions,
         recentIntentions: s.recentIntentions,
         settings:         s.settings,
+        tasks:            s.tasks,
       }),
     }
   )

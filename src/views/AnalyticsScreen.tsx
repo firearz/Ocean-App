@@ -3,12 +3,12 @@
 
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, Calendar, List } from 'lucide-react';
+import { Calendar, List } from 'lucide-react';
 import { useOceanStore } from '../store/useOceanStore';
 import { Tabs, Card, EmptyState } from '../components/Primitives';
 import CalendarHeatmap from '../components/CalendarHeatmap';
 import { DonutChart, BarChart, type ChartSegment, type BarDay } from '../components/Charts';
-import { PrimaryButton } from '../components/Buttons';
+
 
 const ANALYTICS_TABS = [
   { id: 'overview',  label: 'Overview',  },
@@ -16,11 +16,18 @@ const ANALYTICS_TABS = [
   { id: 'insights',  label: 'Insights',  },
 ];
 
+import { useShallow } from 'zustand/react/shallow';
+
 // ── Overview Tab ───────────────────────────────────────────────────────────
 const OverviewTab: React.FC = () => {
-  const { sessions, categories } = useOceanStore();
+  const { sessions, categories } = useOceanStore(
+    useShallow((s) => ({
+      sessions: s.sessions,
+      categories: s.categories,
+    }))
+  );
 
-  const focusSessions = sessions.filter(s => s.phaseType === 'focus' && s.status === 'completed');
+  const focusSessions = sessions.filter(s => s.status === 'completed');
 
   // Heatmap data
   const heatmapData = useMemo(() => {
@@ -157,14 +164,21 @@ const OverviewTab: React.FC = () => {
 
 // ── Timeline Tab ───────────────────────────────────────────────────────────
 const TimelineTab: React.FC = () => {
-  const { sessions, categories } = useOceanStore();
+  const { sessions, categories, removeSession, openContextMenu } = useOceanStore(
+    useShallow((s) => ({
+      sessions: s.sessions,
+      categories: s.categories,
+      removeSession: s.removeSession,
+      openContextMenu: s.openContextMenu,
+    }))
+  );
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const filtered = useMemo(() =>
     sessions
-      .filter(s => s.phaseType === 'focus')
+      .filter(s => s.status === 'completed' || s.status === 'ended_early')
       .filter(s => !search || s.intention.toLowerCase().includes(search.toLowerCase()))
       .filter(s => !filterCat || s.categoryId === filterCat),
     [sessions, search, filterCat]
@@ -242,10 +256,24 @@ const TimelineTab: React.FC = () => {
                   <div
                     className="timeline-session"
                     onClick={() => setExpanded(isExp ? null : s.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openContextMenu(e.clientX, e.clientY, [
+                        {
+                          id: 'delete',
+                          label: 'Delete session',
+                          icon: <span style={{ fontSize: 14 }}>🗑️</span>,
+                          destructive: true,
+                          action: () => removeSession(s.id)
+                        }
+                      ]);
+                    }}
                     role="button"
                     tabIndex={0}
                     aria-expanded={isExp}
                     onKeyDown={e => { if (e.key === 'Enter') setExpanded(isExp ? null : s.id); }}
+                    title="Click to expand. Right-click to delete."
                   >
                     <div className="timeline-session__dot" style={{ background: cat?.colorHex ?? 'var(--border-medium)' }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -309,37 +337,14 @@ const TimelineTab: React.FC = () => {
 
 // ── Insights Tab (Pro) ─────────────────────────────────────────────────────
 const InsightsTab: React.FC = () => {
-  const { settings, sessions } = useOceanStore();
-
-  if (!settings.isPro) {
-    return (
-      <div style={{ padding: 'var(--space-8)' }}>
-        <div className="pro-gate">
-          <div style={{
-            width: 56, height: 56, borderRadius: 'var(--radius-lg)',
-            background: 'var(--accent-focus-subtle)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--accent-focus)',
-          }}>
-            <TrendingUp size={28} />
-          </div>
-          <div>
-            <h2 className="text-h2" style={{ marginBottom: 8 }}>Insights — Pro feature</h2>
-            <p className="text-body text-secondary" style={{ maxWidth: 360, lineHeight: 1.7 }}>
-              Unlock best focus time-of-day analysis, session length trends, and planned vs. actual comparisons.
-            </p>
-          </div>
-          <PrimaryButton onClick={() => {}}>Upgrade to Ocean Pro</PrimaryButton>
-          <p className="text-micro">$4.99 / month · $39.99 / year</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Pro: time-of-day heatmap strip
+  const { sessions } = useOceanStore(
+    useShallow((s) => ({
+      sessions: s.sessions,
+    }))
+  );
   const hourBuckets = useMemo(() => {
     const counts = Array(24).fill(0);
-    sessions.filter(s => s.phaseType === 'focus' && s.status === 'completed')
+    sessions.filter(s => s.status === 'completed')
       .forEach(s => { counts[new Date(s.startedAt).getHours()]++; });
     return counts;
   }, [sessions]);

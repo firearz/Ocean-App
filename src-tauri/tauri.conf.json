@@ -21,6 +21,18 @@
         "center": true,
         "decorations": true,
         "transparent": false
+      },
+      {
+        "label": "mini",
+        "title": "Ocean Mini",
+        "width": 220,
+        "height": 72,
+        "url": "/#/mini",
+        "alwaysOnTop": true,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "skipTaskbar": true
       }
     ],
     "security": {

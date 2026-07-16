@@ -8,10 +8,20 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { Window } from '@tauri-apps/api/window';
 import RingTimer from '../components/RingTimer';
 
+import { useShallow } from 'zustand/react/shallow';
+
 const MiniPlayerScreen: React.FC = () => {
-  const { phase, remaining, activeSession, pauseSession, resumeSession } = useOceanStore();
+  const { phase, remaining, activeSession, pauseSession, resumeSession } = useOceanStore(
+    useShallow((s) => ({
+      phase: s.phase,
+      remaining: s.remaining,
+      activeSession: s.activeSession,
+      pauseSession: s.pauseSession,
+      resumeSession: s.resumeSession,
+    }))
+  );
   const isPaused = phase === 'paused';
-  const isBreak = phase === 'onBreak' || phase === 'longBreak';
+  const isBreak = phase === 'onBreak';
   
   const totalSec = activeSession?.durationMin 
     ? activeSession.durationMin * 60 

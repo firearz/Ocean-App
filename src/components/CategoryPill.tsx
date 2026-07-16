@@ -4,7 +4,10 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Edit2, Archive } from 'lucide-react';
+import { useOceanStore } from '../store/useOceanStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useNavigate } from 'react-router-dom';
 
 export const CATEGORY_COLORS = [
   { id: 'coral',  hex: '#FF6B6B', label: 'Coral'  },
@@ -21,6 +24,7 @@ export interface Category {
   id: string;
   name: string;
   colorHex: string;
+  isArchived?: boolean;
 }
 
 // Pop-in spring animation per spec: scale 0.9 → 1.03 → 1
@@ -36,6 +40,7 @@ interface CategoryPillProps {
   selected?: boolean;
   onSelect?: (cat: Category) => void;
   onRemove?: (cat: Category) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   showRemove?: boolean;
   className?: string;
 }
@@ -45,6 +50,7 @@ export const CategoryPill: React.FC<CategoryPillProps> = ({
   selected = false,
   onSelect,
   onRemove,
+  onContextMenu,
   showRemove = false,
   className = '',
 }) => (
@@ -53,10 +59,12 @@ export const CategoryPill: React.FC<CategoryPillProps> = ({
     initial="initial"
     animate="animate"
     exit="exit"
-    layout
+    whileHover={{ scale: 1.05 }}
+    whileTap={{ scale: 0.94, scaleX: 1.05 }}
     className={`category-pill ${selected ? 'category-pill--active' : ''} ${className}`}
     style={selected ? { borderColor: category.colorHex, color: category.colorHex } : {}}
     onClick={() => onSelect?.(category)}
+    onContextMenu={onContextMenu}
     role="button"
     tabIndex={0}
     aria-pressed={selected}
@@ -96,11 +104,11 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange, onClose }) =
     exit={{ opacity: 0, scale: 0.92, y: -6 }}
     transition={{ type: 'spring', stiffness: 400, damping: 28 }}
     className="card card--float"
-    style={{ position: 'absolute', zIndex: 'var(--z-dropdown)', padding: 12, width: 196 }}
+    style={{ position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 999, padding: 12, width: 196 }}
   >
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
       {CATEGORY_COLORS.map((c) => (
-        <button
+        <motion.button
           key={c.id}
           onClick={() => { onChange(c.hex); onClose(); }}
           aria-label={c.label}
@@ -111,10 +119,9 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange, onClose }) =
             background: c.hex,
             border: value === c.hex ? '3px solid var(--text-primary)' : '2px solid transparent',
             cursor: 'pointer',
-            transition: 'transform 0.12s',
           }}
-          onMouseOver={(e) => (e.currentTarget.style.transform = 'scale(1.15)')}
-          onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+          whileHover={{ scale: 1.15 }}
+          whileTap={{ scale: 0.9 }}
         />
       ))}
     </div>
@@ -124,10 +131,11 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange, onClose }) =
 // ── "Add new category" pill ────────────────────────────────────────────────
 interface AddCategoryPillProps {
   onAdd: (name: string, colorHex: string) => void;
-  disabled?: boolean;
 }
 
-export const AddCategoryPill: React.FC<AddCategoryPillProps> = ({ onAdd, disabled }) => {
+import { Check } from 'lucide-react';
+
+export const AddCategoryPill: React.FC<AddCategoryPillProps> = ({ onAdd }) => {
   const [open, setOpen]         = useState(false);
   const [name, setName]         = useState('');
   const [color, setColor]       = useState<string>(CATEGORY_COLORS[0].hex);
@@ -139,77 +147,118 @@ export const AddCategoryPill: React.FC<AddCategoryPillProps> = ({ onAdd, disable
     setName('');
     setColor(CATEGORY_COLORS[0].hex);
     setOpen(false);
+    setPicking(false);
   };
 
-  if (disabled) {
-    return (
-      <div className="category-pill category-pill--add" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
-        <Plus size={12} />
-        <span>New category</span>
-      </div>
-    );
-  }
+  const handleCancel = () => {
+    setName('');
+    setColor(CATEGORY_COLORS[0].hex);
+    setOpen(false);
+    setPicking(false);
+  };
 
-  if (!open) {
-    return (
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
       <motion.div
+        layout
         variants={pillVariants}
         initial="initial"
         animate="animate"
-        className="category-pill category-pill--add"
-        onClick={() => setOpen(true)}
+        exit="exit"
+        className={`category-pill ${open ? 'category-pill--editing' : 'category-pill--add'}`}
+        onClick={() => !open && setOpen(true)}
+        whileHover={!open ? { scale: 1.05 } : undefined}
+        whileTap={!open ? { scale: 0.94, scaleX: 1.05 } : undefined}
+        style={{
+          cursor: open ? 'default' : 'pointer',
+          padding: open ? '4px 8px' : undefined,
+        }}
         role="button"
         tabIndex={0}
-        aria-label="Add new category"
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpen(true); }}
+        onKeyDown={(e) => { if (!open && (e.key === 'Enter' || e.key === ' ')) setOpen(true); }}
       >
-        <Plus size={12} />
-        <span>New category</span>
+        <AnimatePresence mode="wait">
+          {!open ? (
+            <motion.div
+              key="collapsed"
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Plus size={12} />
+              <span>New category</span>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="expanded"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, width: 0 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, height: 24 }}
+            >
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={(e) => { e.stopPropagation(); setPicking(!picking); }}
+                aria-label="Choose category color"
+                style={{
+                  width: 16, height: 16, borderRadius: '50%',
+                  background: color, border: 'none', cursor: 'pointer', flexShrink: 0,
+                }}
+              />
+              <input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAdd();
+                  if (e.key === 'Escape') handleCancel();
+                }}
+                placeholder="Category name"
+                style={{
+                  flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                  fontFamily: 'var(--font-sans)', fontSize: 'var(--fs-caption)',
+                  color: 'var(--text-primary)', width: 120, minWidth: 60,
+                }}
+                maxLength={30}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <motion.button
+                  whileHover={{ scale: 1.2 }}
+                  whileTap={{ scale: 0.8 }}
+                  onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+                  style={{
+                    background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 2
+                  }}
+                  aria-label="Cancel"
+                >
+                  <X size={14} />
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.2 }}
+                  whileTap={{ scale: 0.8 }}
+                  disabled={!name.trim()}
+                  onClick={(e) => { e.stopPropagation(); handleAdd(); }}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: name.trim() ? 'var(--accent-focus)' : 'var(--border-subtle)',
+                    cursor: name.trim() ? 'pointer' : 'not-allowed',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 2
+                  }}
+                  aria-label="Save"
+                >
+                  <Check size={14} strokeWidth={3} />
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
-    );
-  }
 
-  return (
-    <div style={{ position: 'relative' }}>
-      <div className="card card--elevated" style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, minWidth: 200 }}>
-        {/* Color swatch button */}
-        <button
-          onClick={() => setPicking(!picking)}
-          aria-label="Choose category color"
-          style={{
-            width: 20, height: 20, borderRadius: '50%',
-            background: color, border: 'none', cursor: 'pointer', flexShrink: 0,
-          }}
-        />
-        <input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') setOpen(false); }}
-          placeholder="Category name"
-          style={{
-            flex: 1, background: 'transparent', border: 'none', outline: 'none',
-            fontFamily: 'var(--font-sans)', fontSize: 'var(--fs-caption)',
-            color: 'var(--text-primary)',
-          }}
-          maxLength={30}
-        />
-        <button
-          onClick={handleAdd}
-          disabled={!name.trim()}
-          style={{
-            padding: '2px 10px', borderRadius: 'var(--radius-full)',
-            background: name.trim() ? 'var(--accent-focus)' : 'var(--border-subtle)',
-            color: name.trim() ? '#fff' : 'var(--text-tertiary)',
-            border: 'none', cursor: name.trim() ? 'pointer' : 'not-allowed',
-            fontSize: 'var(--fs-micro)', fontWeight: 600, fontFamily: 'var(--font-sans)',
-          }}
-        >
-          Add
-        </button>
-      </div>
       <AnimatePresence>
-        {picking && (
+        {picking && open && (
           <ColorPicker value={color} onChange={setColor} onClose={() => setPicking(false)} />
         )}
       </AnimatePresence>
@@ -223,19 +272,20 @@ interface PillRowProps {
   selected?: string | null;
   onSelect?: (cat: Category) => void;
   onAdd?: (name: string, colorHex: string) => void;
-  maxFree?: number;  // free tier: cap at 3 (pass undefined for Pro)
-  isPro?: boolean;
 }
+
 
 export const CategoryPillRow: React.FC<PillRowProps> = ({
   categories,
   selected,
   onSelect,
   onAdd,
-  maxFree = 3,
-  isPro = false,
 }) => {
-  const atLimit = !isPro && categories.length >= maxFree;
+  const { openContextMenu, archiveCategory } = useOceanStore(useShallow(s => ({
+    openContextMenu: s.openContextMenu,
+    archiveCategory: s.archiveCategory
+  })));
+  const navigate = useNavigate();
 
   return (
     <div className="pill-row" role="group" aria-label="Category selection">
@@ -246,10 +296,29 @@ export const CategoryPillRow: React.FC<PillRowProps> = ({
             category={cat}
             selected={selected === cat.id}
             onSelect={onSelect}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openContextMenu(e.clientX, e.clientY, [
+                {
+                  id: 'edit',
+                  label: 'Edit Category',
+                  icon: <Edit2 size={14} />,
+                  action: () => navigate('/categories')
+                },
+                {
+                  id: 'archive',
+                  label: 'Archive',
+                  icon: <Archive size={14} />,
+                  destructive: true,
+                  action: () => archiveCategory(cat.id)
+                }
+              ]);
+            }}
           />
         ))}
       </AnimatePresence>
-      {onAdd && <AddCategoryPill onAdd={onAdd} disabled={atLimit} />}
+      {onAdd && <AddCategoryPill onAdd={onAdd} />}
     </div>
   );
 };

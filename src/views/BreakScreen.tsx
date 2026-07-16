@@ -9,11 +9,22 @@ import { useOceanStore } from '../store/useOceanStore';
 import RingTimer from '../components/RingTimer';
 import { IconButton, PrimaryButton } from '../components/Buttons';
 
+import { useShallow } from 'zustand/react/shallow';
+
 const BreakScreen: React.FC = () => {
   const {
     phase, remaining,
     pauseSession, resumeSession, completePhase, settings,
-  } = useOceanStore();
+  } = useOceanStore(
+    useShallow((s) => ({
+      phase: s.phase,
+      remaining: s.remaining,
+      pauseSession: s.pauseSession,
+      resumeSession: s.resumeSession,
+      completePhase: s.completePhase,
+      settings: s.settings,
+    }))
+  );
 
   const isPaused = phase === 'paused';
   const totalSec = settings.breakDurationMin * 60;
@@ -27,9 +38,9 @@ const BreakScreen: React.FC = () => {
     <div
       className="break-screen"
       style={{
-        background: `radial-gradient(ellipse 80% 60% at 50% 30%,
+        backgroundImage: `radial-gradient(ellipse 80% 60% at 50% 30%,
           rgba(var(--accent-break-rgb), 0.06) 0%,
-          var(--bg-canvas) 70%)`,
+          transparent 70%)`,
       }}
     >
       {/* Headline */}

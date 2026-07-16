@@ -3,24 +3,62 @@
 // Free tier: cap at 3 active categories with inline upgrade prompt.
 
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Edit2, Archive, Plus } from 'lucide-react';
+import { motion, AnimatePresence, useMotionValue, useTransform, useVelocity, useSpring } from 'framer-motion';
+import { Edit2, Archive, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { useOceanStore } from '../store/useOceanStore';
 import { CATEGORY_COLORS, type Category } from '../components/CategoryPill';
 import { PrimaryButton, GhostButton, IconButton } from '../components/Buttons';
 import { Card, EmptyState } from '../components/Primitives';
 
+import { useShallow } from 'zustand/react/shallow';
+
+const LiquidCard: React.FC<{ children: React.ReactNode, reducedMotion: boolean }> = ({ children, reducedMotion }) => {
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const vx = useVelocity(x);
+  const vy = useVelocity(y);
+  const smoothVx = useSpring(vx, { damping: 30, stiffness: 400 });
+  const smoothVy = useSpring(vy, { damping: 30, stiffness: 400 });
+  const skewX = useTransform(smoothVx, [-800, 800], [4, -4]);
+  const skewY = useTransform(smoothVy, [-800, 800], [-4, 4]);
+  const scale = useTransform(smoothVx, [-800, 0, 800], [0.95, 1, 0.95]);
+
+  return (
+    <motion.div
+      style={reducedMotion ? {} : { x, y, skewX, skewY, scale, zIndex: 1 }}
+      drag={!reducedMotion}
+      dragSnapToOrigin
+      dragElastic={0.6}
+      whileDrag={reducedMotion ? {} : { zIndex: 10, cursor: 'grabbing', scale: 1.05 }}
+    >
+      {children}
+    </motion.div>
+  );
+};
+
 const CategoriesScreen: React.FC = () => {
-  const { categories, settings, addCategory, updateCategory, removeCategory, addToast } = useOceanStore();
+  const reducedMotion = useOceanStore(s => s.settings?.reducedMotion ?? false);
+  const { categories, addCategory, updateCategory, removeCategory, archiveCategory, restoreCategory } = useOceanStore(
+    useShallow((s) => ({
+      categories: s.categories,
+      addCategory: s.addCategory,
+      updateCategory: s.updateCategory,
+      removeCategory: s.removeCategory,
+      archiveCategory: s.archiveCategory,
+      restoreCategory: s.restoreCategory,
+    }))
+  );
   const [editing,    setEditing]    = useState<string | null>(null);
   const [editName,   setEditName]   = useState('');
   const [editColor,  setEditColor]  = useState('');
   const [showAdd,    setShowAdd]    = useState(false);
   const [newName,    setNewName]    = useState('');
   const [newColor,   setNewColor]   = useState<string>(CATEGORY_COLORS[0].hex);
+  const [viewTab,    setViewTab]    = useState<'active' | 'archived'>('active');
 
-  const isPro = settings.isPro;
-  const atLimit = !isPro && categories.length >= 3;
+  const activeCategories = categories.filter(c => !c.isArchived);
+  const archivedCategories = categories.filter(c => c.isArchived);
+
 
   const startEdit = (cat: Category) => {
     setEditing(cat.id);
@@ -52,47 +90,63 @@ const CategoriesScreen: React.FC = () => {
             Organise your sessions by topic or project.
           </p>
         </div>
-        <PrimaryButton
-          onClick={() => {
-            if (atLimit) { addToast('Upgrade to Ocean Pro for unlimited categories.', 'info'); return; }
-            setShowAdd(true);
+        <AnimatePresence mode="popLayout">
+          {!showAdd ? (
+            <motion.div layoutId="newCategoryForm" style={{ borderRadius: 'var(--radius-full)' }} key="btn">
+              <PrimaryButton
+                onClick={() => {
+                  setViewTab('active');
+                  setShowAdd(true);
+                }}
+                icon={<Plus size={15} />}
+                size="sm"
+              >
+                New category
+              </PrimaryButton>
+            </motion.div>
+          ) : (
+            <motion.div key="placeholder" style={{ width: 140 }} />
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
+        <button
+          onClick={() => setViewTab('active')}
+          style={{
+            padding: '6px 14px', borderRadius: 'var(--radius-full)',
+            background: viewTab === 'active' ? 'var(--text-primary)' : 'transparent',
+            color: viewTab === 'active' ? 'var(--bg-canvas)' : 'var(--text-secondary)',
+            fontWeight: 500, fontSize: 'var(--fs-caption)', border: 'none', cursor: 'pointer',
+            transition: 'all 0.2s'
           }}
-          icon={<Plus size={15} />}
-          size="sm"
         >
-          New category
-        </PrimaryButton>
+          Active ({activeCategories.length})
+        </button>
+        <button
+          onClick={() => setViewTab('archived')}
+          style={{
+            padding: '6px 14px', borderRadius: 'var(--radius-full)',
+            background: viewTab === 'archived' ? 'var(--text-primary)' : 'transparent',
+            color: viewTab === 'archived' ? 'var(--bg-canvas)' : 'var(--text-secondary)',
+            fontWeight: 500, fontSize: 'var(--fs-caption)', border: 'none', cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          Archived ({archivedCategories.length})
+        </button>
       </div>
 
       {/* Free tier notice */}
-      {!isPro && (
-        <div style={{
-          padding: 'var(--space-3) var(--space-4)',
-          background: 'var(--accent-focus-subtle)',
-          borderRadius: 'var(--radius-md)',
-          marginBottom: 'var(--space-4)',
-          fontSize: 'var(--fs-caption)',
-          color: 'var(--accent-focus)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 'var(--space-3)',
-        }}>
-          <span>{categories.length}/3 categories used on free plan</span>
-          <GhostButton size="sm" style={{ color: 'var(--accent-focus)', padding: '2px 10px' }}>
-            Upgrade for unlimited
-          </GhostButton>
-        </div>
-      )}
+
 
       {/* Add new card */}
       <AnimatePresence>
         {showAdd && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            style={{ overflow: 'hidden', marginBottom: 'var(--space-4)' }}
+            layoutId="newCategoryForm"
+            style={{ marginBottom: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-elevated)', zIndex: 10 }}
           >
             <Card variant="elevated">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -150,16 +204,16 @@ const CategoriesScreen: React.FC = () => {
       </AnimatePresence>
 
       {/* Category grid */}
-      {categories.length === 0 ? (
+      {(viewTab === 'active' ? activeCategories : archivedCategories).length === 0 ? (
         <EmptyState
-          title="No categories yet"
-          body="Create categories to organise your focus sessions by topic or project."
-          action={<PrimaryButton size="sm" onClick={() => setShowAdd(true)} icon={<Plus size={14} />}>New category</PrimaryButton>}
+          title={viewTab === 'active' ? "No categories yet" : "No archived categories"}
+          body={viewTab === 'active' ? "Create categories to organise your focus sessions by topic or project." : "When you archive a category, it will appear here."}
+          action={viewTab === 'active' ? <PrimaryButton size="sm" onClick={() => setShowAdd(true)} icon={<Plus size={14} />}>New category</PrimaryButton> : null}
         />
       ) : (
         <div className="categories-grid">
           <AnimatePresence mode="popLayout">
-            {categories.map(cat => (
+            {(viewTab === 'active' ? activeCategories : archivedCategories).map(cat => (
               <motion.div
                 key={cat.id}
                 layout
@@ -168,7 +222,18 @@ const CategoriesScreen: React.FC = () => {
                 exit={{ opacity: 0, scale: 0.88 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 28 }}
               >
-                <Card>
+                <LiquidCard reducedMotion={reducedMotion}>
+                  <motion.div
+                    drag
+                    dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                    dragElastic={0.4}
+                    whileDrag={{ scale: 1.05, cursor: 'grabbing', zIndex: 10, filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.15))' }}
+                  >
+                  <Card style={{ 
+                    boxShadow: `inset 0 0 80px -20px ${cat.colorHex}15`, 
+                    border: `1px solid ${cat.colorHex}25`,
+                    background: `linear-gradient(to bottom right, rgba(255,255,255,0.02), ${cat.colorHex}05)`
+                  }}>
                   {editing === cat.id ? (
                     /* Edit mode */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -217,16 +282,39 @@ const CategoriesScreen: React.FC = () => {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <IconButton label={`Edit ${cat.name}`} onClick={() => startEdit(cat)} style={{ width: 32, height: 32 }}>
-                          <Edit2 size={13} />
-                        </IconButton>
-                        <IconButton label={`Remove ${cat.name}`} onClick={() => removeCategory(cat.id)} style={{ width: 32, height: 32 }}>
-                          <Archive size={13} />
-                        </IconButton>
+                        {viewTab === 'active' ? (
+                          <>
+                            <IconButton label={`Edit ${cat.name}`} onClick={() => startEdit(cat)} style={{ width: 32, height: 32 }}>
+                              <Edit2 size={13} />
+                            </IconButton>
+                            <IconButton label={`Archive ${cat.name}`} onClick={() => archiveCategory(cat.id)} style={{ width: 32, height: 32 }}>
+                              <Archive size={13} />
+                            </IconButton>
+                          </>
+                        ) : (
+                          <>
+                            <IconButton label={`Restore ${cat.name}`} onClick={() => restoreCategory(cat.id)} style={{ width: 32, height: 32 }}>
+                              <RefreshCw size={13} />
+                            </IconButton>
+                            <IconButton 
+                              label={`Delete ${cat.name}`} 
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to permanently delete "${cat.name}"?`)) {
+                                  removeCategory(cat.id);
+                                }
+                              }} 
+                              style={{ width: 32, height: 32, color: 'var(--accent-coral)' }}
+                            >
+                              <Trash2 size={13} />
+                            </IconButton>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
-                </Card>
+                  </Card>
+                  </motion.div>
+                </LiquidCard>
               </motion.div>
             ))}
           </AnimatePresence>

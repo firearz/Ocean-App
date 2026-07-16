@@ -6,7 +6,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Home, BarChart2, Tag, Settings, Menu, X
+  Home, BarChart2, Tag, Settings, Menu, X, CheckSquare
 } from 'lucide-react';
 import { useOceanStore } from '../store/useOceanStore';
 import { IconButton } from '../components/Buttons';
@@ -14,10 +14,11 @@ import { ToastContainer } from '../components/Primitives';
 
 
 const NAV_ITEMS = [
-  { path: '/',          label: 'Home',      icon: Home      },
-  { path: '/analytics', label: 'Analytics', icon: BarChart2 },
-  { path: '/categories',label: 'Categories',icon: Tag       },
-  { path: '/settings',  label: 'Settings',  icon: Settings  },
+  { path: '/',          label: 'Home',      icon: Home        },
+  { path: '/tasks',     label: 'Tasks',     icon: CheckSquare },
+  { path: '/analytics', label: 'Analytics', icon: BarChart2   },
+  { path: '/categories',label: 'Categories',icon: Tag         },
+  { path: '/settings',  label: 'Settings',  icon: Settings    },
 ] as const;
 
 // ── Title bar brand ring icon ──────────────────────────────────────────────
@@ -35,8 +36,21 @@ const BrandRing: React.FC<{ progress?: number }> = ({ progress = 0.75 }) => (
 );
 
 // ── AppShell ───────────────────────────────────────────────────────────────
+import { useShallow } from 'zustand/react/shallow';
+
 const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { navExpanded, setNavExpanded, toasts, removeToast, phase, remaining, activeSession, settings } = useOceanStore();
+  const { navExpanded, setNavExpanded, toasts, removeToast, phase, remaining, activeSession, settings } = useOceanStore(
+    useShallow((s) => ({
+      navExpanded: s.navExpanded,
+      setNavExpanded: s.setNavExpanded,
+      toasts: s.toasts,
+      removeToast: s.removeToast,
+      phase: s.phase,
+      remaining: s.remaining,
+      activeSession: s.activeSession,
+      settings: s.settings,
+    }))
+  );
   const location = useLocation();
 
   // Hide nav rail during immersive screens
@@ -137,18 +151,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         className={`main-content ${!immersive ? (navExpanded ? 'main-content--expanded' : 'main-content--collapsed') : ''}`}
         style={immersive ? { marginLeft: 0 } : undefined}
       >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            style={{ height: '100%' }}
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
+        {children}
       </main>
 
       {/* ── Toast container ───────────────────────────────────────────── */}

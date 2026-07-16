@@ -6,8 +6,16 @@ import { motion } from 'framer-motion';
 import { useOceanStore } from '../store/useOceanStore';
 import { PrimaryButton, GhostButton } from '../components/Buttons';
 
+import { useShallow } from 'zustand/react/shallow';
+
 const ReflectionSheet: React.FC = () => {
-  const { activeSession, saveSession, completePhase } = useOceanStore();
+  const { activeSession, saveSession, completePhase } = useOceanStore(
+    useShallow((s) => ({
+      activeSession: s.activeSession,
+      saveSession: s.saveSession,
+      completePhase: s.completePhase,
+    }))
+  );
 
   const [note,   setNote]   = useState('');
   const [rating, setRating] = useState<number | null>(null);
@@ -21,7 +29,6 @@ const ReflectionSheet: React.FC = () => {
       saveSession({
         intention:          activeSession.intention,
         categoryId:         activeSession.categoryId,
-        phaseType:          'focus',
         plannedDurationSec: activeSession.durationMin * 60,
         actualDurationSec:  actualSec,
         overflowSec:        activeSession.overflowMs ? Math.round(activeSession.overflowMs / 1000) : 0,
@@ -44,7 +51,6 @@ const ReflectionSheet: React.FC = () => {
       saveSession({
         intention:          activeSession.intention,
         categoryId:         activeSession.categoryId,
-        phaseType:          'focus',
         plannedDurationSec: activeSession.durationMin * 60,
         actualDurationSec:  actualSec,
         overflowSec:        0,
