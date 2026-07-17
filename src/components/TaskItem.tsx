@@ -8,14 +8,21 @@ import confetti from 'canvas-confetti';
 export const AnimatedCheckbox: React.FC<{ checked: boolean; onClick: () => void }> = ({ checked, onClick }) => {
   const handleClick = (e: React.MouseEvent) => {
     if (!checked) {
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      const x = (rect.left + rect.width / 2) / window.innerWidth;
-      const y = (rect.top + rect.height / 2) / window.innerHeight;
+      let x, y;
+      if (e.clientX === 0 && e.clientY === 0) {
+        // Keyboard fallback
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        x = (rect.left + rect.width / 2) / window.innerWidth;
+        y = (rect.top + rect.height / 2) / window.innerHeight;
+      } else {
+        // Mouse exact position
+        x = e.clientX / window.innerWidth;
+        y = e.clientY / window.innerHeight;
+      }
       
       confetti({
-        particleCount: 80,
-        spread: 80,
-        startVelocity: 30,
+        particleCount: 70,
+        spread: 70,
         origin: { x, y },
         colors: ['#FF6B6B', '#6C63FF', '#56CCF2', '#43e8d8', '#FFD166'],
         disableForReducedMotion: true,
