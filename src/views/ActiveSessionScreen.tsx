@@ -1,16 +1,17 @@
 // Ocean — Active Session Screen
 // Part 2 § 2.4: Large RingTimer, MM:SS, controls, blocking badge, ambient tint.
-// Part 1 § 2.2: Warm coral radial gradient backdrop during focus.
+// Supports both countdown and stopwatch modes.
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pause, Play, StopCircle, Plus, Minus, Lock, Minimize2, CheckSquare } from 'lucide-react';
+import { Pause, Play, StopCircle, Plus, Minus, Lock, Minimize2, CheckSquare, Coffee, Waves } from 'lucide-react';
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useOceanStore } from '../store/useOceanStore';
 import RingTimer from '../components/RingTimer';
 import { IconButton, GhostButton } from '../components/Buttons';
 import { CategoryPill } from '../components/CategoryPill';
 import { TaskItem } from '../components/TaskItem';
+import AmbientPicker from '../components/AmbientPicker';
 
 import { useShallow } from 'zustand/react/shallow';
 
@@ -41,15 +42,31 @@ const MorphingBlob: React.FC<{ reducedMotion: boolean }> = ({ reducedMotion }) =
   );
 };
 
+// Format seconds as MM:SS or HH:MM:SS
+function formatTime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// Stopwatch ring fills over a 90-min baseline
+const STOPWATCH_BASELINE_SEC = 90 * 60;
+
 const ActiveSessionScreen: React.FC = () => {
   const {
-    phase, remaining, activeSession, glow,
+    phase, remaining, elapsed, activeSession, glow,
     categories,
-    pauseSession, resumeSession, extendSession, endEarly, tasks, addTask
+    pauseSession, resumeSession, extendSession, endEarly, tasks, addTask,
+    startStopwatchBreak, endStopwatchBreak,
   } = useOceanStore(
     useShallow((s) => ({
       phase: s.phase,
       remaining: s.remaining,
+      elapsed: s.elapsed,
       activeSession: s.activeSession,
       glow: s.glow,
       categories: s.categories,
@@ -59,6 +76,8 @@ const ActiveSessionScreen: React.FC = () => {
       endEarly: s.endEarly,
       tasks: s.tasks,
       addTask: s.addTask,
+      startStopwatchBreak: s.startStopwatchBreak,
+      endStopwatchBreak: s.endStopwatchBreak,
     }))
   );
 
@@ -75,28 +94,43 @@ const ActiveSessionScreen: React.FC = () => {
     }
   };
 
-  const isPaused     = phase === 'paused';
+  const isPaused    = phase === 'paused';
+  const isOnBreak   = phase === 'onBreak';
+  const isStopwatch = activeSession?.isStopwatch ?? false;
+
+  // Timer display values
   const totalSec     = (activeSession?.durationMin ?? 25) * 60;
-  const progress     = totalSec > 0 ? remaining / totalSec : 0;
-  const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
-  const ss = String(remaining % 60).padStart(2, '0');
+  const countdownProgress = totalSec > 0 ? remaining / totalSec : 0;
+  const stopwatchProgress = Math.min(1, elapsed / STOPWATCH_BASELINE_SEC);
+  const progress     = isStopwatch ? stopwatchProgress : countdownProgress;
+  const timeDisplay  = isStopwatch
+    ? formatTime(elapsed)
+    : formatTime(remaining);
 
   const category = categories.find(c => c.id === activeSession?.categoryId);
 
   // Announce 2-min warning to screen readers (once)
   const [announced, setAnnounced] = useState(false);
   useEffect(() => {
-    if (remaining <= 120 && remaining > 0 && !announced) {
+    if (!isStopwatch && remaining <= 120 && remaining > 0 && !announced) {
       setAnnounced(true);
     }
-  }, [remaining]);
+  }, [remaining, isStopwatch]);
+
+  // Break state label
+  const getPhaseLabel = () => {
+    if (isOnBreak && isStopwatch) return 'on break';
+    if (isPaused) return 'paused';
+    if (isOnBreak) return 'break';
+    return isStopwatch ? 'flow' : 'focusing';
+  };
 
   return (
     <div
       className="session-screen"
       style={{
         backgroundImage: `radial-gradient(ellipse 80% 60% at 50% 30%,
-          rgba(var(--accent-focus-rgb), ${isPaused ? 0.03 : 0.06}) 0%,
+          rgba(var(--accent-focus-rgb), ${isPaused ? 0.03 : isOnBreak ? 0.02 : 0.06}) 0%,
           transparent 70%)`,
       }}
     >
@@ -228,10 +262,33 @@ const ActiveSessionScreen: React.FC = () => {
         </motion.div>
       )}
 
+      {/* On Break badge for stopwatch mode */}
+      {isOnBreak && isStopwatch && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--accent-break-subtle)',
+            border: '1px solid var(--accent-break)',
+            borderRadius: 'var(--radius-full)',
+            padding: '4px 16px',
+            fontSize: 'var(--fs-micro)',
+            fontWeight: 600,
+            color: 'var(--accent-break)',
+          }}
+        >
+          ☕ ON BREAK
+        </motion.div>
+      )}
+
       {/* Ring Timer — hero element */}
       <motion.div
         initial={{ scale: 0.85, opacity: 0 }}
-        animate={{ scale: 1, opacity: isPaused ? 0.7 : 1 }}
+        animate={{ scale: 1, opacity: (isPaused || (isOnBreak && isStopwatch)) ? 0.7 : 1 }}
         transition={{ type: 'spring', stiffness: 220, damping: 24 }}
         style={{ position: 'relative' }}
       >
@@ -240,19 +297,22 @@ const ActiveSessionScreen: React.FC = () => {
           size={320}
           strokeWidth={8}
           progress={progress}
-          color="focus"
+          color={isOnBreak && !isStopwatch ? 'break' : 'focus'}
           glow={glow}
           mode="timer"
         >
           <span
             className="ring-timer__digits"
-            style={{ fontSize: 72 }}
-            aria-label={`${mm} minutes ${ss} seconds remaining`}
+            style={{ fontSize: elapsed > 3599 || remaining > 3599 ? 52 : 72 }}
+            aria-label={isStopwatch
+              ? `${timeDisplay} elapsed`
+              : `${timeDisplay} remaining`
+            }
           >
-            {mm}:{ss}
+            {timeDisplay}
           </span>
           <span className="ring-timer__label" style={{ fontSize: 14 }}>
-            {isPaused ? 'paused' : 'focusing'}
+            {getPhaseLabel()}
           </span>
         </RingTimer>
       </motion.div>
@@ -283,6 +343,16 @@ const ActiveSessionScreen: React.FC = () => {
         )}
       </motion.div>
 
+      {/* Ambient picker */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        style={{ position: 'relative' }}
+      >
+        <AmbientPicker />
+      </motion.div>
+
       {/* Controls */}
       <motion.div
         className="session-controls"
@@ -309,50 +379,89 @@ const ActiveSessionScreen: React.FC = () => {
           <Minimize2 size={18} />
         </IconButton>
 
-        {/* Reduce -5 */}
-        <IconButton
-          label="Reduce session by 5 minutes"
-          onClick={() => extendSession(-5)}
-        >
-          <Minus size={18} />
-        </IconButton>
+        {/* Countdown-only: Reduce -5 / Extend +5 */}
+        {!isStopwatch && (
+          <>
+            <IconButton
+              label="Reduce session by 5 minutes"
+              onClick={() => extendSession(-5)}
+            >
+              <Minus size={18} />
+            </IconButton>
+            <IconButton
+              label="Extend session by 5 minutes"
+              onClick={() => extendSession(5)}
+            >
+              <Plus size={18} />
+            </IconButton>
+          </>
+        )}
 
-        {/* Extend +5 */}
-        <IconButton
-          label="Extend session by 5 minutes"
-          onClick={() => extendSession(5)}
-        >
-          <Plus size={18} />
-        </IconButton>
+        {/* Stopwatch: Take a Break / Resume Flow */}
+        {isStopwatch && !isOnBreak && !isPaused && (
+          <IconButton
+            label="Take a break"
+            onClick={startStopwatchBreak}
+            style={{ color: 'var(--accent-break)' }}
+          >
+            <Coffee size={18} />
+          </IconButton>
+        )}
+        {isStopwatch && isOnBreak && (
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={endStopwatchBreak}
+            aria-label="Resume flow session"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '10px 18px',
+              borderRadius: 'var(--radius-full)',
+              background: 'var(--accent-break)',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#fff',
+              fontSize: 'var(--fs-caption)',
+              fontWeight: 600,
+              boxShadow: '0 4px 16px rgba(var(--accent-break-rgb), 0.35)',
+            }}
+          >
+            <Waves size={15} />
+            Resume Flow
+          </motion.button>
+        )}
 
-        {/* Pause / Resume */}
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          onClick={isPaused ? resumeSession : pauseSession}
-          aria-label={isPaused ? 'Resume session' : 'Pause session'}
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: '50%',
-            background: 'var(--accent-focus)',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            boxShadow: '0 6px 20px rgba(var(--accent-focus-rgb), 0.36)',
-          }}
-        >
-          {isPaused
-            ? <Play size={26} fill="currentColor" />
-            : <Pause size={26} />
-          }
-        </motion.button>
+        {/* Pause / Resume (only when not on stopwatch break) */}
+        {!(isStopwatch && isOnBreak) && (
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={isPaused ? resumeSession : pauseSession}
+            aria-label={isPaused ? 'Resume session' : 'Pause session'}
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              background: 'var(--accent-focus)',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              boxShadow: '0 6px 20px rgba(var(--accent-focus-rgb), 0.36)',
+            }}
+          >
+            {isPaused
+              ? <Play size={26} fill="currentColor" />
+              : <Pause size={26} />
+            }
+          </motion.button>
+        )}
 
-        {/* End Early */}
+        {/* End Session (always available) */}
         <IconButton
-          label="End session early"
+          label={isStopwatch ? 'Finish session' : 'End session early'}
           onClick={() => setShowEndConfirm(true)}
         >
           <StopCircle size={18} />
@@ -375,9 +484,14 @@ const ActiveSessionScreen: React.FC = () => {
               exit={{ scale: 0.9, y: 20 }}
               transition={{ type: 'spring', stiffness: 380, damping: 28 }}
             >
-              <h2 className="text-h2">End session early?</h2>
+              <h2 className="text-h2">
+                {isStopwatch ? 'Finish flow session?' : 'End session early?'}
+              </h2>
               <p className="text-body text-secondary">
-                The session will be saved with your actual focus time.
+                {isStopwatch
+                  ? `Great work! ${formatTime(elapsed)} of focused flow will be saved.`
+                  : 'The session will be saved with your actual focus time.'
+                }
               </p>
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
                 <GhostButton onClick={() => setShowEndConfirm(false)}>Keep going</GhostButton>
@@ -386,7 +500,7 @@ const ActiveSessionScreen: React.FC = () => {
                   onClick={() => { setShowEndConfirm(false); endEarly(); }}
                   style={{ background: 'var(--accent-focus)' }}
                 >
-                  End session
+                  {isStopwatch ? 'Finish session' : 'End session'}
                 </button>
               </div>
             </motion.div>

@@ -6,8 +6,9 @@ import { useOceanStore } from '../store/useOceanStore';
 import { useShallow } from 'zustand/react/shallow';
 import { Toggle, Slider, Stepper } from '../components/Primitives';
 import { GhostButton, PrimaryButton } from '../components/Buttons';
+import type { AmbientSound } from '../store/useOceanStore';
 import {
-  Timer, Music, ShieldOff, Bell, User, Info, Palette
+  Timer, Music, ShieldOff, Bell, User, Info, Palette, Waves
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -53,11 +54,39 @@ const TimerSection: React.FC = () => {
   return (
     <div className="settings-card">
       <h2 className="text-h2">Timer</h2>
+      <SettingRow label="Default mode"
+        description="Switch between a fixed countdown timer or an open-ended stopwatch"
+        control={
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['countdown', 'stopwatch'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => updateSettings({ timerMode: mode })}
+                aria-pressed={settings.timerMode === mode}
+                style={{
+                  padding: '6px 14px', cursor: 'pointer',
+                  borderRadius: 'var(--radius-full)', border: 'none',
+                  fontFamily: 'var(--font-sans)', fontSize: 'var(--fs-body)', fontWeight: 500,
+                  background: settings.timerMode === mode ? 'var(--accent-focus)' : 'transparent',
+                  color: settings.timerMode === mode ? '#fff' : 'var(--text-secondary)',
+                  transition: 'background var(--dur-fast), color var(--dur-fast)',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {mode === 'countdown' ? <Timer size={13} /> : <Waves size={13} />}
+                {mode === 'countdown' ? 'Timer' : 'Stopwatch'}
+              </button>
+            ))}
+          </div>
+        }
+      />
       <SettingRow label="Work duration"
+        disabled={settings.timerMode === 'stopwatch'}
         control={<Stepper value={settings.workDurationMin} onChange={handleWorkDurationChange} min={1} max={180} step={5} unit=" min" />}
       />
       <SettingRow label="Break duration"
         description="This ratio is maintained for all your sessions."
+        disabled={settings.timerMode === 'stopwatch'}
         control={<Stepper value={settings.breakDurationMin} onChange={v => updateSettings({ breakDurationMin: v })} min={1} max={60} step={1} unit=" min" />}
       />
       <SettingRow label="Breathing exercises"
@@ -66,14 +95,17 @@ const TimerSection: React.FC = () => {
       />
       <SettingRow label="Auto-start next session"
         description="Automatically start focusing after a break"
+        disabled={settings.timerMode === 'stopwatch'}
         control={<Toggle id="auto-start" checked={settings.autoStartNext} onChange={v => updateSettings({ autoStartNext: v })} />}
       />
       <SettingRow label="Overflow timer"
         description="Keep counting after session ends until you stop"
+        disabled={settings.timerMode === 'stopwatch'}
         control={<Toggle id="overflow" checked={settings.overflowEnabled} onChange={v => updateSettings({ overflowEnabled: v })} />}
       />
       <SettingRow label="2-minute warning"
         description="Glow ring when 2 minutes remain"
+        disabled={settings.timerMode === 'stopwatch'}
         control={<Toggle id="two-min" checked={settings.twoMinWarning} onChange={v => updateSettings({ twoMinWarning: v })} />}
       />
       <SettingRow label="Require intention"
@@ -136,6 +168,15 @@ const SoundsSection: React.FC = () => {
   );
   const packs = ['chime', 'marimba', 'wood', 'silent'] as const;
 
+  const AMBIENT_OPTIONS: { id: AmbientSound; label: string; emoji: string }[] = [
+    { id: 'none',        label: 'Off',         emoji: '🔇' },
+    { id: 'ocean',       label: 'Ocean',       emoji: '🌊' },
+    { id: 'rain',        label: 'Rain',        emoji: '🌧️' },
+    { id: 'brown-noise', label: 'Brown Noise', emoji: '🟫' },
+    { id: 'pink-noise',  label: 'Pink Noise',  emoji: '🌸' },
+    { id: 'white-noise', label: 'White Noise', emoji: '⬜' },
+  ];
+
   return (
     <div className="settings-card">
       <h2 className="text-h2">Sounds</h2>
@@ -169,6 +210,41 @@ const SoundsSection: React.FC = () => {
       />
       <SettingRow label="Volume" disabled={!settings.soundEnabled}
         control={<div style={{ width: 200 }}><Slider id="vol" value={settings.soundVolume} onChange={v => updateSettings({ soundVolume: v })} unit="%" /></div>}
+      />
+
+      {/* ── Ambient Soundscapes ── */}
+      <div style={{ height: 1, background: 'var(--border-subtle)', margin: '8px 0' }} />
+      <h3 style={{ fontSize: 'var(--fs-caption)', fontWeight: 600, color: 'var(--text-secondary)', margin: '4px 0 0', textTransform: 'uppercase', letterSpacing: 'var(--ls-wide)' }}>
+        Ambient Soundscapes
+      </h3>
+      <SettingRow label="Default soundscape"
+        description="Plays automatically during focus sessions"
+        control={
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {AMBIENT_OPTIONS.map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => updateSettings({ ambientSound: opt.id })}
+                aria-pressed={settings.ambientSound === opt.id}
+                style={{
+                  padding: '5px 10px', cursor: 'pointer',
+                  borderRadius: 'var(--radius-full)', fontFamily: 'var(--font-sans)',
+                  fontSize: 'var(--fs-micro)', fontWeight: 600,
+                  background: settings.ambientSound === opt.id ? 'var(--accent-focus)' : 'var(--bg-surface)',
+                  color: settings.ambientSound === opt.id ? '#fff' : 'var(--text-secondary)',
+                  border: `1px solid ${settings.ambientSound === opt.id ? 'transparent' : 'var(--border-subtle)'}`,
+                  transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                }}
+              >
+                <span>{opt.emoji}</span> {opt.label}
+              </button>
+            ))}
+          </div>
+        }
+      />
+      <SettingRow label="Ambient volume" disabled={settings.ambientSound === 'none'}
+        control={<div style={{ width: 200 }}><Slider id="ambient-vol" value={settings.ambientVolume} onChange={v => updateSettings({ ambientVolume: v })} unit="%" /></div>}
       />
     </div>
   );

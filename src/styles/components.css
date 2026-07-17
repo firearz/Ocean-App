@@ -615,3 +615,54 @@
     var(--bg-canvas) 70%
   );
 }
+
+/* ── Mode Toggle (Timer | Stopwatch) ────────────────────────── */
+.mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-full);
+  padding: 4px;
+  gap: 2px;
+  box-shadow: var(--shadow-sm);
+}
+
+.mode-toggle__option {
+  position: relative;
+  padding: 0;
+  border-radius: var(--radius-full);
+}
+
+.mode-toggle__indicator {
+  position: absolute;
+  inset: 0;
+  background: var(--accent-focus);
+  border-radius: var(--radius-full);
+  z-index: 0;
+  box-shadow: 0 2px 8px rgba(var(--accent-focus-rgb), 0.30);
+}
+
+.mode-toggle__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  letter-spacing: var(--ls-normal);
+  transition: color 0.2s;
+  white-space: nowrap;
+}
+
+/* ── Ambient Picker wrapper ─────────────────────────────────── */
+.ambient-picker-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+

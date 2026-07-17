@@ -1,10 +1,10 @@
 // Ocean — Home Screen
-// Part 2 § 2.2: Greeting, IntentionInput, CategoryPillRow,
-// DurationSelector, Start Session button, Today strip.
+// Part 2 § 2.2: Greeting, Mode Toggle, IntentionInput, CategoryPillRow,
+// DurationSelector, Start Session/Flow button, Today strip.
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Play } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Play, Timer, Waves } from 'lucide-react';
 import { useOceanStore } from '../store/useOceanStore';
 import IntentionInput from '../components/IntentionInput';
 import DurationSelector from '../components/DurationSelector';
@@ -23,7 +23,7 @@ function getGreeting(): string {
 const HomeScreen: React.FC = () => {
   const {
     categories, recentIntentions, sessions, settings,
-    startSession, addCategory, addToast, removeRecentIntention
+    startSession, startStopwatch, addCategory, addToast, removeRecentIntention, updateSettings
   } = useOceanStore(
     useShallow((s) => ({
       categories: s.categories,
@@ -31,15 +31,19 @@ const HomeScreen: React.FC = () => {
       sessions: s.sessions,
       settings: s.settings,
       startSession: s.startSession,
+      startStopwatch: s.startStopwatch,
       addCategory: s.addCategory,
       addToast: s.addToast,
       removeRecentIntention: s.removeRecentIntention,
+      updateSettings: s.updateSettings,
     }))
   );
 
   const [intention,   setIntention]   = useState('');
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [duration,    setDuration]    = useState(settings.workDurationMin);
+
+  const isStopwatch = settings.timerMode === 'stopwatch';
 
   // Today stats
   const todayStr = new Date().toDateString();
@@ -63,7 +67,11 @@ const HomeScreen: React.FC = () => {
       addToast('Please state your intention before starting.', 'warning');
       return;
     }
-    startSession(intention.trim() || 'Focus session', selectedCat, duration);
+    if (isStopwatch) {
+      startStopwatch(intention.trim() || 'Flow session', selectedCat);
+    } else {
+      startSession(intention.trim() || 'Focus session', selectedCat, duration);
+    }
   };
 
   return (
@@ -72,6 +80,50 @@ const HomeScreen: React.FC = () => {
       <div className="ambient-backdrop" />
 
       <div className="home-content">
+        {/* ── Mode Toggle ── */}
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0, duration: 0.3 }}
+          style={{ display: 'flex', justifyContent: 'center' }}
+        >
+          <div
+            className="mode-toggle"
+            role="group"
+            aria-label="Timer mode"
+          >
+            {(['countdown', 'stopwatch'] as const).map((mode) => {
+              const active = settings.timerMode === mode;
+              const Icon = mode === 'countdown' ? Timer : Waves;
+              const label = mode === 'countdown' ? 'Timer' : 'Stopwatch';
+              return (
+                <motion.button
+                  key={mode}
+                  className="mode-toggle__option"
+                  onClick={() => updateSettings({ timerMode: mode })}
+                  aria-pressed={active}
+                  aria-label={`${label} mode`}
+                  whileHover={{ scale: active ? 1 : 1.04 }}
+                  whileTap={{ scale: 0.96 }}
+                  style={{ position: 'relative', zIndex: 1, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                >
+                  {active && (
+                    <motion.div
+                      layoutId="modeToggleActive"
+                      className="mode-toggle__indicator"
+                      transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                    />
+                  )}
+                  <span className="mode-toggle__content" style={{ color: active ? '#fff' : 'var(--text-secondary)' }}>
+                    <Icon size={13} />
+                    {label}
+                  </span>
+                </motion.button>
+              );
+            })}
+          </div>
+        </motion.div>
+
         {/* Greeting */}
         <motion.p
           initial={{ opacity: 0, y: 8 }}
@@ -111,17 +163,49 @@ const HomeScreen: React.FC = () => {
           />
         </motion.div>
 
-        {/* Duration selector */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.3 }}
-          style={{ display: 'flex', justifyContent: 'center' }}
-        >
-          <DurationSelector value={duration} onChange={setDuration} />
-        </motion.div>
+        {/* Duration selector — only in countdown mode */}
+        <AnimatePresence mode="wait">
+          {!isStopwatch && (
+            <motion.div
+              key="duration-selector"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              style={{ display: 'flex', justifyContent: 'center', overflow: 'hidden' }}
+            >
+              <DurationSelector value={duration} onChange={setDuration} />
+            </motion.div>
+          )}
+          {isStopwatch && (
+            <motion.div
+              key="stopwatch-hint"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }}
+            >
+              <p
+                className="text-secondary"
+                style={{
+                  textAlign: 'center',
+                  fontSize: 'var(--fs-caption)',
+                  padding: '6px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                }}
+              >
+                <Waves size={13} />
+                Open-ended — stop whenever you're done
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Start session */}
+        {/* Start session / Start flow */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -131,9 +215,12 @@ const HomeScreen: React.FC = () => {
           <PrimaryButton
             className="btn--full btn--lg"
             onClick={handleStart}
-            icon={<Play size={17} fill="currentColor" />}
+            icon={isStopwatch
+              ? <Waves size={17} />
+              : <Play size={17} fill="currentColor" />
+            }
           >
-            Start Session
+            {isStopwatch ? 'Start Flow' : 'Start Session'}
           </PrimaryButton>
         </motion.div>
 
@@ -154,7 +241,7 @@ const HomeScreen: React.FC = () => {
           </div>
           <div className="stat-chip">
             <span className="stat-chip__value" style={{ color: streak > 0 ? 'var(--accent-focus)' : undefined }}>{streak}</span>
-            <span className="stat-chip__label">{streak === 1 ? 'day streak' : 'day streak'}</span>
+            <span className="stat-chip__label">day streak</span>
           </div>
         </motion.div>
       </div>

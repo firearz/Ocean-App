@@ -47,10 +47,14 @@ export interface ContextMenuState {
   items: ContextMenuItem[];
 }
 
+// ── Ambient Sound Types ────────────────────────────────────────────────────
+export type AmbientSound = 'none' | 'brown-noise' | 'ocean' | 'rain' | 'pink-noise' | 'white-noise';
+
 // ── Settings ───────────────────────────────────────────────────────────────
 export interface OceanSettings {
   theme:               'light' | 'dark' | 'system';
   reducedMotion:       boolean;
+  timerMode:           'countdown' | 'stopwatch'; // default: countdown
   workDurationMin:     number;   // default 25
   breakDurationMin:    number;   // default 5
   breathCount:         number;   // 0-12
@@ -60,6 +64,8 @@ export interface OceanSettings {
   soundEnabled:        boolean;
   soundPack:           'chime' | 'marimba' | 'wood' | 'silent';
   soundVolume:         number;   // 0-100
+  ambientSound:        AmbientSound; // default: 'none'
+  ambientVolume:       number;   // 0-100
   focusAssistEnabled:  boolean;
   requireIntention:    boolean;
   hasCompletedOnboarding: boolean;
@@ -75,6 +81,7 @@ export interface TodoTask {
 const DEFAULT_SETTINGS: OceanSettings = {
   theme:               'system',
   reducedMotion:       false,
+  timerMode:           'countdown',
   workDurationMin:     25,
   breakDurationMin:    5,
   breathCount:         3,
@@ -84,6 +91,8 @@ const DEFAULT_SETTINGS: OceanSettings = {
   soundEnabled:        true,
   soundPack:           'chime',
   soundVolume:         70,
+  ambientSound:        'none',
+  ambientVolume:       60,
   focusAssistEnabled:  false,
   requireIntention:    true,
   hasCompletedOnboarding: false,
@@ -100,6 +109,10 @@ export interface ActiveSession {
   pausedRemainMs: number; // remaining ms at time of pause
   sessionCount: number; // how many focus sessions completed in this run
   overflowMs:  number;
+  // ── Stopwatch fields ──
+  isStopwatch:    boolean; // true = count up mode
+  elapsedMs:      number;  // ms elapsed so far (accumulated across pauses)
+  breakElapsedMs: number;  // ms spent on manual breaks (excluded from focus time)
 }
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -107,8 +120,9 @@ interface OceanStore {
   // Timer state
   phase:         SessionPhase;
   activeSession: ActiveSession | null;
-  remaining:     number;   // seconds, recomputed from endAtUtc
-  glow:          boolean;  // 2-min warning
+  remaining:     number;   // seconds, recomputed from endAtUtc (countdown)
+  elapsed:       number;   // seconds elapsed so far (stopwatch)
+  glow:          boolean;  // 2-min warning (countdown only)
 
   // Data
   categories:    Category[];
@@ -126,7 +140,8 @@ interface OceanStore {
 
   // ── Actions ──────────────────────────────────────────────────────────────
   startSession: (intention: string, categoryId: string | null, durationMin: number) => void;
-  startBreathing: (intention: string, categoryId: string | null, durationMin: number) => void;
+  startStopwatch: (intention: string, categoryId: string | null) => void;
+  startBreathing: (intention: string, categoryId: string | null, durationMin: number, isStopwatch?: boolean) => void;
   beginFocusing: () => void;
   pauseSession: () => void;
   resumeSession: () => void;
@@ -136,6 +151,9 @@ interface OceanStore {
   completePhase: () => void;
   dismissEndedEarly: () => void;
   tick: () => void;
+  // Stopwatch-specific break controls
+  startStopwatchBreak: () => void;
+  endStopwatchBreak: () => void;
 
   // Category CRUD
   addCategory:    (name: string, colorHex: string) => void;
@@ -176,6 +194,7 @@ export const useOceanStore = create<OceanStore>()(
       phase:         'idle',
       activeSession: null,
       remaining:     0,
+      elapsed:       0,
       glow:          false,
       categories:    [
         { id: 'cat-work',  name: 'Work',    colorHex: '#FF6B6B' },
@@ -191,9 +210,32 @@ export const useOceanStore = create<OceanStore>()(
       tasks:            [],
 
       // ── Start breathing phase ────────────────────────────────────────────
-      startBreathing: (intention, categoryId, durationMin) => {
+      startBreathing: (intention, categoryId, durationMin, isStopwatch = false) => {
         const settings = get().settings;
+        // For stopwatch, endAtUtc is set far in future so tick never auto-completes
+        const endAtUtc = isStopwatch
+          ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+          : new Date(Date.now() + durationMin * 60 * 1000);
+
         if (settings.breathCount === 0) {
+          // Skip breathing, go straight to focusing
+          set({
+            phase: 'breathing',
+            activeSession: {
+              intention,
+              categoryId,
+              durationMin,
+              startedAt: new Date(),
+              endAtUtc,
+              pausedAt: null,
+              pausedRemainMs: 0,
+              sessionCount: 0,
+              overflowMs: 0,
+              isStopwatch,
+              elapsedMs: 0,
+              breakElapsedMs: 0,
+            },
+          });
           get().beginFocusing();
           return;
         }
@@ -204,13 +246,26 @@ export const useOceanStore = create<OceanStore>()(
             categoryId,
             durationMin,
             startedAt: new Date(),
-            endAtUtc: new Date(Date.now() + durationMin * 60 * 1000),
+            endAtUtc,
             pausedAt: null,
             pausedRemainMs: 0,
             sessionCount: 0,
             overflowMs: 0,
+            isStopwatch,
+            elapsedMs: 0,
+            breakElapsedMs: 0,
           },
         });
+      },
+
+      // ── Start Stopwatch ──────────────────────────────────────────────────
+      startStopwatch: (intention, categoryId) => {
+        get().startBreathing(intention, categoryId, 0, true);
+        // Add to recent intentions (deduplicated)
+        const prev = get().recentIntentions.filter(
+          (r) => r.toLowerCase() !== intention.toLowerCase()
+        );
+        set({ recentIntentions: [intention, ...prev].slice(0, 10) });
       },
 
       removeRecentIntention: (intention) => set(s => ({
@@ -218,7 +273,7 @@ export const useOceanStore = create<OceanStore>()(
       })),
 
       startSession: (intention, categoryId, durationMin) => {
-        get().startBreathing(intention, categoryId, durationMin);
+        get().startBreathing(intention, categoryId, durationMin, false);
         // Add to recent intentions (deduplicated, case-insensitive)
         const prev = get().recentIntentions.filter(
           (r) => r.toLowerCase() !== intention.toLowerCase()
@@ -230,12 +285,27 @@ export const useOceanStore = create<OceanStore>()(
       beginFocusing: () => {
         const as = get().activeSession;
         if (!as) return;
-        const endAtUtc = new Date(Date.now() + as.durationMin * 60 * 1000);
-        set({
-          phase: 'focusing',
-          glow: false,
-          activeSession: { ...as, endAtUtc },
-        });
+
+        if (as.isStopwatch) {
+          // Stopwatch: reset startedAt to now, endAtUtc stays far future
+          set({
+            phase: 'focusing',
+            glow: false,
+            elapsed: 0,
+            activeSession: {
+              ...as,
+              startedAt: new Date(),
+              elapsedMs: 0,
+            },
+          });
+        } else {
+          const endAtUtc = new Date(Date.now() + as.durationMin * 60 * 1000);
+          set({
+            phase: 'focusing',
+            glow: false,
+            activeSession: { ...as, endAtUtc },
+          });
+        }
 
         // Start tick
         if (tickInterval) clearInterval(tickInterval);
@@ -247,6 +317,16 @@ export const useOceanStore = create<OceanStore>()(
         const { phase, activeSession } = get();
         if (!activeSession || (phase !== 'focusing' && phase !== 'onBreak')) return;
 
+        if (activeSession.isStopwatch && phase === 'focusing') {
+          // Stopwatch: count up elapsed from startedAt + accumulated elapsedMs
+          const nowMs = Date.now();
+          const sessionElapsedMs = nowMs - activeSession.startedAt.getTime();
+          const totalElapsedSec = Math.floor((activeSession.elapsedMs + sessionElapsedMs) / 1000);
+          set({ elapsed: totalElapsedSec });
+          return; // Stopwatch never auto-completes
+        }
+
+        // Countdown mode (or stopwatch on-break which uses its own tracking)
         const remainMs = activeSession.endAtUtc.getTime() - Date.now();
         const remainSec = Math.max(0, Math.ceil(remainMs / 1000));
 
@@ -260,6 +340,46 @@ export const useOceanStore = create<OceanStore>()(
         }
       },
 
+      // ── Stopwatch manual break controls ─────────────────────────────────
+      startStopwatchBreak: () => {
+        const { phase, activeSession } = get();
+        if (!activeSession?.isStopwatch || phase !== 'focusing') return;
+        if (tickInterval) clearInterval(tickInterval);
+        // Accumulate elapsed up to this moment
+        const nowMs = Date.now();
+        const sessionElapsedMs = nowMs - activeSession.startedAt.getTime();
+        const totalElapsedMs = activeSession.elapsedMs + sessionElapsedMs;
+        set({
+          phase: 'onBreak',
+          activeSession: {
+            ...activeSession,
+            elapsedMs: totalElapsedMs,
+            pausedAt: new Date(),
+          },
+        });
+      },
+
+      endStopwatchBreak: () => {
+        const { phase, activeSession } = get();
+        if (!activeSession?.isStopwatch || phase !== 'onBreak') return;
+        // Track break duration
+        const breakMs = activeSession.pausedAt
+          ? Date.now() - activeSession.pausedAt.getTime()
+          : 0;
+        set({
+          phase: 'focusing',
+          activeSession: {
+            ...activeSession,
+            startedAt: new Date(), // reset segment start
+            elapsedMs: activeSession.elapsedMs, // keep accumulated
+            breakElapsedMs: activeSession.breakElapsedMs + breakMs,
+            pausedAt: null,
+          },
+        });
+        if (tickInterval) clearInterval(tickInterval);
+        tickInterval = setInterval(() => get().tick(), 1000);
+      },
+
       // ── Phase completed naturally ────────────────────────────────────────
       completePhase: () => {
         const { phase, activeSession, settings } = get();
@@ -268,6 +388,12 @@ export const useOceanStore = create<OceanStore>()(
         if (phase === 'focusing') {
           set({ phase: 'reflecting', glow: false });
         } else if (phase === 'reflecting') {
+          // Stopwatch sessions skip break entirely (breaks are user-initiated)
+          if (activeSession.isStopwatch) {
+            set({ phase: 'idle', activeSession: null, remaining: 0, elapsed: 0, glow: false });
+            return;
+          }
+
           // If remaining > 0, the session was ended early. Show the custom message screen instead of a break.
           const { remaining } = get();
           if (remaining > 0) {
@@ -297,7 +423,7 @@ export const useOceanStore = create<OceanStore>()(
               settings.workDurationMin
             );
           } else {
-            set({ phase: 'idle', activeSession: null, remaining: 0 });
+            set({ phase: 'idle', activeSession: null, remaining: 0, elapsed: 0 });
           }
         }
       },
@@ -306,25 +432,54 @@ export const useOceanStore = create<OceanStore>()(
         const { phase, activeSession } = get();
         if ((phase !== 'focusing' && phase !== 'onBreak') || !activeSession) return;
         if (tickInterval) clearInterval(tickInterval);
-        const remainMs = activeSession.endAtUtc.getTime() - Date.now();
-        set({
-          phase: 'paused',
-          activeSession: {
-            ...activeSession,
-            pausedAt: new Date(),
-            pausedRemainMs: remainMs,
-          },
-        });
+
+        if (activeSession.isStopwatch) {
+          // For stopwatch: freeze elapsed at this moment
+          const nowMs = Date.now();
+          const sessionElapsedMs = nowMs - activeSession.startedAt.getTime();
+          const totalElapsedMs = activeSession.elapsedMs + sessionElapsedMs;
+          set({
+            phase: 'paused',
+            activeSession: {
+              ...activeSession,
+              elapsedMs: totalElapsedMs,
+              pausedAt: new Date(),
+            },
+          });
+        } else {
+          const remainMs = activeSession.endAtUtc.getTime() - Date.now();
+          set({
+            phase: 'paused',
+            activeSession: {
+              ...activeSession,
+              pausedAt: new Date(),
+              pausedRemainMs: remainMs,
+            },
+          });
+        }
       },
 
       resumeSession: () => {
         const { activeSession } = get();
         if (!activeSession) return;
-        const newEndAt = new Date(Date.now() + activeSession.pausedRemainMs);
-        set({
-          phase: 'focusing',
-          activeSession: { ...activeSession, endAtUtc: newEndAt, pausedAt: null },
-        });
+
+        if (activeSession.isStopwatch) {
+          // For stopwatch: reset segment startedAt to now, keep accumulated elapsedMs
+          set({
+            phase: 'focusing',
+            activeSession: {
+              ...activeSession,
+              startedAt: new Date(),
+              pausedAt: null,
+            },
+          });
+        } else {
+          const newEndAt = new Date(Date.now() + activeSession.pausedRemainMs);
+          set({
+            phase: 'focusing',
+            activeSession: { ...activeSession, endAtUtc: newEndAt, pausedAt: null },
+          });
+        }
         if (tickInterval) clearInterval(tickInterval);
         tickInterval = setInterval(() => get().tick(), 1000);
       },
@@ -346,18 +501,31 @@ export const useOceanStore = create<OceanStore>()(
       },
 
       endEarly: () => {
+        const { activeSession } = get();
         if (tickInterval) clearInterval(tickInterval);
-        set({ phase: 'reflecting', glow: false });
+        if (activeSession?.isStopwatch) {
+          // For stopwatch, accumulate final elapsed before reflecting
+          const nowMs = Date.now();
+          const sessionElapsedMs = nowMs - activeSession.startedAt.getTime();
+          const totalElapsedMs = activeSession.elapsedMs + sessionElapsedMs;
+          set({
+            phase: 'reflecting',
+            glow: false,
+            activeSession: { ...activeSession, elapsedMs: totalElapsedMs },
+          });
+        } else {
+          set({ phase: 'reflecting', glow: false });
+        }
       },
 
       abortSession: () => {
         if (tickInterval) clearInterval(tickInterval);
-        set({ phase: 'idle', activeSession: null, remaining: 0, glow: false });
+        set({ phase: 'idle', activeSession: null, remaining: 0, elapsed: 0, glow: false });
       },
 
       dismissEndedEarly: () => {
         if (tickInterval) clearInterval(tickInterval);
-        set({ phase: 'idle', activeSession: null, remaining: 0, glow: false });
+        set({ phase: 'idle', activeSession: null, remaining: 0, elapsed: 0, glow: false });
       },
 
       addCategory: (name, colorHex) => {
@@ -462,6 +630,15 @@ export const useOceanStore = create<OceanStore>()(
         recentIntentions: s.recentIntentions,
         settings:         s.settings,
         tasks:            s.tasks,
+      }),
+      // Merge new setting defaults with stored settings on rehydration
+      merge: (persisted: unknown, current) => ({
+        ...current,
+        ...(persisted as object),
+        settings: {
+          ...current.settings,
+          ...((persisted as { settings?: Partial<OceanSettings> }).settings ?? {}),
+        },
       }),
     }
   )

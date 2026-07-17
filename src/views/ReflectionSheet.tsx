@@ -1,5 +1,6 @@
 // Ocean — Reflection Sheet
-// Part 2 § 2.6: Modal sheet, "Nice work.", optional note, 1-5 dot rating, Save & Continue.
+// Part 2 § 2.6: Modal sheet, optional note, 1-5 dot rating, Save & Continue.
+// Supports both countdown and stopwatch sessions.
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
@@ -7,6 +8,15 @@ import { useOceanStore } from '../store/useOceanStore';
 import { PrimaryButton, GhostButton } from '../components/Buttons';
 
 import { useShallow } from 'zustand/react/shallow';
+
+function formatDuration(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s > 0 ? `${s}s` : ''}`.trim();
+  return `${s}s`;
+}
 
 const ReflectionSheet: React.FC = () => {
   const { activeSession, saveSession, completePhase } = useOceanStore(
@@ -20,19 +30,27 @@ const ReflectionSheet: React.FC = () => {
   const [note,   setNote]   = useState('');
   const [rating, setRating] = useState<number | null>(null);
 
+  const isStopwatch = activeSession?.isStopwatch ?? false;
+  // For stopwatch, actualDurationSec = elapsedMs / 1000
+  const actualSec = isStopwatch
+    ? Math.round((activeSession?.elapsedMs ?? 0) / 1000)
+    : (() => {
+        const endedAt = new Date();
+        const startedAt = activeSession?.startedAt ?? endedAt;
+        return Math.round((endedAt.getTime() - startedAt.getTime()) / 1000);
+      })();
+
   const handleSave = () => {
     if (activeSession) {
       const endedAt = new Date();
-      const startedAt = activeSession.startedAt;
-      const actualSec = Math.round((endedAt.getTime() - startedAt.getTime()) / 1000);
 
       saveSession({
         intention:          activeSession.intention,
         categoryId:         activeSession.categoryId,
-        plannedDurationSec: activeSession.durationMin * 60,
+        plannedDurationSec: isStopwatch ? 0 : activeSession.durationMin * 60,
         actualDurationSec:  actualSec,
         overflowSec:        activeSession.overflowMs ? Math.round(activeSession.overflowMs / 1000) : 0,
-        startedAt:          startedAt.toISOString(),
+        startedAt:          activeSession.startedAt.toISOString(),
         endedAt:            endedAt.toISOString(),
         status:             'completed',
         reflectionNote:     note.trim() || null,
@@ -44,14 +62,12 @@ const ReflectionSheet: React.FC = () => {
   };
 
   const handleSkip = () => {
-    // Save session without reflection
     if (activeSession) {
       const endedAt = new Date();
-      const actualSec = Math.round((endedAt.getTime() - activeSession.startedAt.getTime()) / 1000);
       saveSession({
         intention:          activeSession.intention,
         categoryId:         activeSession.categoryId,
-        plannedDurationSec: activeSession.durationMin * 60,
+        plannedDurationSec: isStopwatch ? 0 : activeSession.durationMin * 60,
         actualDurationSec:  actualSec,
         overflowSec:        0,
         startedAt:          activeSession.startedAt.toISOString(),
@@ -76,7 +92,14 @@ const ReflectionSheet: React.FC = () => {
       >
         {/* Header */}
         <div>
-          <h1 className="text-h1" style={{ marginBottom: 6 }}>Nice work.</h1>
+          <h1 className="text-h1" style={{ marginBottom: 6 }}>
+            {isStopwatch ? 'Great flow session.' : 'Nice work.'}
+          </h1>
+          {isStopwatch && actualSec > 0 && (
+            <p className="text-caption" style={{ color: 'var(--accent-focus)', fontWeight: 600, marginBottom: 4 }}>
+              {formatDuration(actualSec)} of focused flow
+            </p>
+          )}
           <p className="text-caption text-secondary">
             {activeSession?.intention && `"${activeSession.intention}"`}
           </p>

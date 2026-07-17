@@ -26,6 +26,7 @@ import ContextMenu from './components/ContextMenu';
 // Store
 import { useOceanStore } from './store/useOceanStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useAmbientAudio } from './hooks/useAmbientAudio';
 
 const PageWrapper = ({ children }: { children: React.ReactNode }) => {
   return (
@@ -50,6 +51,9 @@ const AppContent: React.FC = () => {
     }))
   );
   const location = useLocation();
+
+  // Keep ambient audio engine in sync with settings
+  useAmbientAudio();
 
   // 1. Onboarding
   if (!settings.hasCompletedOnboarding && location.pathname !== '/mini') {
