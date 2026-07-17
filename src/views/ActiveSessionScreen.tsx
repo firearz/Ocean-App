@@ -5,8 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Pause, Play, StopCircle, Plus, Minus, Lock, Minimize2, CheckSquare } from 'lucide-react';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { Window } from '@tauri-apps/api/window';
+import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useOceanStore } from '../store/useOceanStore';
 import RingTimer from '../components/RingTimer';
 import { IconButton, GhostButton } from '../components/Buttons';
@@ -297,7 +296,7 @@ const ActiveSessionScreen: React.FC = () => {
           label="Mini Player"
           onClick={async () => {
             try {
-              const mini = await Window.getByLabel('mini');
+              const mini = await WebviewWindow.getByLabel('mini');
               if (mini) {
                 await mini.show();
                 await getCurrentWebviewWindow().hide();

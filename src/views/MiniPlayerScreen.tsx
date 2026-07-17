@@ -4,8 +4,7 @@
 import React from 'react';
 import { useOceanStore } from '../store/useOceanStore';
 import { Play, Pause, Maximize2 } from 'lucide-react';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { Window } from '@tauri-apps/api/window';
+import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import RingTimer from '../components/RingTimer';
 
 import { useShallow } from 'zustand/react/shallow';
@@ -99,7 +98,7 @@ const MiniPlayerScreen: React.FC = () => {
       <button
         onClick={async () => {
           try {
-            const main = await Window.getByLabel('main');
+            const main = await WebviewWindow.getByLabel('main');
             if (main) {
               await main.show();
               await main.setFocus();

@@ -115,12 +115,10 @@ input, textarea, [contenteditable] {
 .gap-8  { gap: var(--space-8); }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--border-medium);
-  border-radius: var(--radius-full);
+::-webkit-scrollbar { 
+  display: none; 
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--border-strong);
+* {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
