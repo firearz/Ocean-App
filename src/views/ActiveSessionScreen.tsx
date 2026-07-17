@@ -46,7 +46,7 @@ const ActiveSessionScreen: React.FC = () => {
   const {
     phase, remaining, activeSession, glow,
     categories,
-    pauseSession, resumeSession, extendSession, endEarly, tasks
+    pauseSession, resumeSession, extendSession, endEarly, tasks, addTask
   } = useOceanStore(
     useShallow((s) => ({
       phase: s.phase,
@@ -59,12 +59,22 @@ const ActiveSessionScreen: React.FC = () => {
       extendSession: s.extendSession,
       endEarly: s.endEarly,
       tasks: s.tasks,
+      addTask: s.addTask,
     }))
   );
 
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
+  const [newTask, setNewTask] = useState('');
+
+  const handleAddTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newTask.trim()) {
+      addTask(newTask.trim());
+      setNewTask('');
+    }
+  };
 
   const isPaused     = phase === 'paused';
   const totalSec     = (activeSession?.durationMin ?? 25) * 60;
@@ -155,6 +165,32 @@ const ActiveSessionScreen: React.FC = () => {
                   </svg>
                 </IconButton>
               </div>
+
+              <form onSubmit={handleAddTask} style={{ display: 'flex', gap: 8, marginTop: 4, cursor: 'default' }}>
+                <input
+                  type="text"
+                  value={newTask}
+                  onChange={(e) => setNewTask(e.target.value)}
+                  placeholder="Add a task..."
+                  style={{
+                    flex: 1, padding: '10px 14px', borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-medium)', background: 'var(--bg-surface)',
+                    fontSize: 'var(--fs-body)', color: 'var(--text-primary)', outline: 'none',
+                    minWidth: 0
+                  }}
+                />
+                <button type="submit" disabled={!newTask.trim()} style={{
+                  background: newTask.trim() ? 'var(--accent-focus)' : 'var(--bg-elevated)',
+                  color: newTask.trim() ? '#fff' : 'var(--text-tertiary)',
+                  border: 'none', borderRadius: 'var(--radius-md)', padding: '0 14px',
+                  cursor: newTask.trim() ? 'pointer' : 'default',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}>
+                  <Plus size={18} />
+                </button>
+              </form>
+
               {tasks.filter(t => !t.completed).length === 0 ? (
                 <p className="text-tertiary text-micro" style={{ textAlign: 'center', padding: '20px 0' }}>All caught up!</p>
               ) : (

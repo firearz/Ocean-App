@@ -3,37 +3,59 @@ import { motion, Reorder, AnimatePresence } from 'framer-motion';
 import { Trash2, Check } from 'lucide-react';
 import { useOceanStore, TodoTask } from '../store/useOceanStore';
 import { useShallow } from 'zustand/react/shallow';
+import confetti from 'canvas-confetti';
 
-export const AnimatedCheckbox: React.FC<{ checked: boolean; onClick: () => void }> = ({ checked, onClick }) => (
-  <motion.button
-    onClick={onClick}
-    animate={{ 
-      backgroundColor: checked ? 'var(--accent-focus)' : 'transparent',
-      borderColor: checked ? 'var(--accent-focus)' : 'var(--border-strong)',
-    }}
-    whileTap={{ scale: 0.8, borderRadius: '40%' }}
-    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-    style={{
-      width: 24, height: 24, borderRadius: '50%',
-      border: '2px solid', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      cursor: 'pointer', flexShrink: 0
-    }}
-    aria-label={checked ? "Mark as incomplete" : "Mark as complete"}
-  >
-    <AnimatePresence>
-      {checked && (
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-        >
-          <Check size={14} color="#fff" strokeWidth={4} />
-        </motion.div>
-      )}
-    </AnimatePresence>
-  </motion.button>
-);
+export const AnimatedCheckbox: React.FC<{ checked: boolean; onClick: () => void }> = ({ checked, onClick }) => {
+  const handleClick = (e: React.MouseEvent) => {
+    if (!checked) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const x = (rect.left + rect.width / 2) / window.innerWidth;
+      const y = (rect.top + rect.height / 2) / window.innerHeight;
+      
+      confetti({
+        particleCount: 80,
+        spread: 80,
+        startVelocity: 30,
+        origin: { x, y },
+        colors: ['#FF6B6B', '#6C63FF', '#56CCF2', '#43e8d8', '#FFD166'],
+        disableForReducedMotion: true,
+        zIndex: 10000,
+      });
+    }
+    onClick();
+  };
+
+  return (
+    <motion.button
+      onClick={handleClick}
+      animate={{ 
+        backgroundColor: checked ? 'var(--accent-focus)' : 'transparent',
+        borderColor: checked ? 'var(--accent-focus)' : 'var(--border-strong)',
+      }}
+      whileTap={{ scale: 0.8, borderRadius: '40%' }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      style={{
+        width: 24, height: 24, borderRadius: '50%',
+        border: '2px solid', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', flexShrink: 0
+      }}
+      aria-label={checked ? "Mark as incomplete" : "Mark as complete"}
+    >
+      <AnimatePresence>
+        {checked && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+          >
+            <Check size={14} color="#fff" strokeWidth={4} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.button>
+  );
+};
 
 export const TaskItem: React.FC<{ task: TodoTask, dragEnabled?: boolean }> = ({ task, dragEnabled = true }) => {
   const { toggleTask, removeTask } = useOceanStore(
@@ -98,7 +120,12 @@ export const TaskItem: React.FC<{ task: TodoTask, dragEnabled?: boolean }> = ({ 
     filter: task.completed ? 'blur(4px)' : 'blur(0px)',
   };
   const exitAnim = { opacity: 0, scale: 0.8, filter: 'blur(10px)' };
-  const transitionAnim = { type: 'spring' as const, stiffness: 400, damping: 24 };
+  const transitionAnim = { 
+    type: 'spring' as const, 
+    stiffness: 200, 
+    damping: 24, 
+    mass: 0.8 
+  };
 
   if (!dragEnabled) {
     return (
