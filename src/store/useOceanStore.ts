@@ -151,9 +151,6 @@ interface OceanStore {
   completePhase: () => void;
   dismissEndedEarly: () => void;
   tick: () => void;
-  // Stopwatch-specific break controls
-  startStopwatchBreak: () => void;
-  endStopwatchBreak: () => void;
 
   // Category CRUD
   addCategory:    (name: string, colorHex: string) => void;
@@ -338,46 +335,6 @@ export const useOceanStore = create<OceanStore>()(
           if (tickInterval) clearInterval(tickInterval);
           get().completePhase();
         }
-      },
-
-      // ── Stopwatch manual break controls ─────────────────────────────────
-      startStopwatchBreak: () => {
-        const { phase, activeSession } = get();
-        if (!activeSession?.isStopwatch || phase !== 'focusing') return;
-        if (tickInterval) clearInterval(tickInterval);
-        // Accumulate elapsed up to this moment
-        const nowMs = Date.now();
-        const sessionElapsedMs = nowMs - activeSession.startedAt.getTime();
-        const totalElapsedMs = activeSession.elapsedMs + sessionElapsedMs;
-        set({
-          phase: 'onBreak',
-          activeSession: {
-            ...activeSession,
-            elapsedMs: totalElapsedMs,
-            pausedAt: new Date(),
-          },
-        });
-      },
-
-      endStopwatchBreak: () => {
-        const { phase, activeSession } = get();
-        if (!activeSession?.isStopwatch || phase !== 'onBreak') return;
-        // Track break duration
-        const breakMs = activeSession.pausedAt
-          ? Date.now() - activeSession.pausedAt.getTime()
-          : 0;
-        set({
-          phase: 'focusing',
-          activeSession: {
-            ...activeSession,
-            startedAt: new Date(), // reset segment start
-            elapsedMs: activeSession.elapsedMs, // keep accumulated
-            breakElapsedMs: activeSession.breakElapsedMs + breakMs,
-            pausedAt: null,
-          },
-        });
-        if (tickInterval) clearInterval(tickInterval);
-        tickInterval = setInterval(() => get().tick(), 1000);
       },
 
       // ── Phase completed naturally ────────────────────────────────────────

@@ -1,7 +1,7 @@
 // Ocean — Main App Router
 // Part 2: State-based routing, AppShell, and immersive screens.
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -54,6 +54,17 @@ const AppContent: React.FC = () => {
 
   // Keep ambient audio engine in sync with settings
   useAmbientAudio();
+
+  // Make body transparent for mini player so it looks like a pill
+  useEffect(() => {
+    if (location.pathname === '/mini') {
+      document.body.style.background = 'transparent';
+      document.documentElement.style.background = 'transparent';
+    } else {
+      document.body.style.background = '';
+      document.documentElement.style.background = '';
+    }
+  }, [location.pathname]);
 
   // 1. Onboarding
   if (!settings.hasCompletedOnboarding && location.pathname !== '/mini') {

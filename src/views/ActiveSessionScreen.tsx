@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pause, Play, StopCircle, Plus, Minus, Lock, Minimize2, CheckSquare, Coffee, Waves } from 'lucide-react';
+import { Pause, Play, StopCircle, Plus, Minus, Lock, Minimize2, CheckSquare, Coffee } from 'lucide-react';
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useOceanStore } from '../store/useOceanStore';
 import RingTimer from '../components/RingTimer';
@@ -61,7 +61,6 @@ const ActiveSessionScreen: React.FC = () => {
     phase, remaining, elapsed, activeSession, glow,
     categories,
     pauseSession, resumeSession, extendSession, endEarly, tasks, addTask,
-    startStopwatchBreak, endStopwatchBreak,
   } = useOceanStore(
     useShallow((s) => ({
       phase: s.phase,
@@ -76,8 +75,6 @@ const ActiveSessionScreen: React.FC = () => {
       endEarly: s.endEarly,
       tasks: s.tasks,
       addTask: s.addTask,
-      startStopwatchBreak: s.startStopwatchBreak,
-      endStopwatchBreak: s.endStopwatchBreak,
     }))
   );
 
@@ -95,8 +92,9 @@ const ActiveSessionScreen: React.FC = () => {
   };
 
   const isPaused    = phase === 'paused';
-  const isOnBreak   = phase === 'onBreak';
   const isStopwatch = activeSession?.isStopwatch ?? false;
+  // If it's a stopwatch, 'paused' is our break state
+  const isOnBreak   = phase === 'onBreak' || (isStopwatch && isPaused);
 
   // Timer display values
   const totalSec     = (activeSession?.durationMin ?? 25) * 60;
@@ -398,42 +396,56 @@ const ActiveSessionScreen: React.FC = () => {
         )}
 
         {/* Stopwatch: Take a Break / Resume Flow */}
-        {isStopwatch && !isOnBreak && !isPaused && (
-          <IconButton
-            label="Take a break"
-            onClick={startStopwatchBreak}
-            style={{ color: 'var(--accent-break)' }}
-          >
-            <Coffee size={18} />
-          </IconButton>
-        )}
-        {isStopwatch && isOnBreak && (
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={endStopwatchBreak}
-            aria-label="Resume flow session"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '10px 18px',
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--accent-break)',
-              border: 'none',
-              cursor: 'pointer',
-              color: '#fff',
-              fontSize: 'var(--fs-caption)',
-              fontWeight: 600,
-              boxShadow: '0 4px 16px rgba(var(--accent-break-rgb), 0.35)',
-            }}
-          >
-            <Waves size={15} />
-            Resume Flow
-          </motion.button>
+        {isStopwatch && (
+          <>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={isPaused ? resumeSession : pauseSession}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '12px 20px',
+                borderRadius: 'var(--radius-full)',
+                background: isPaused ? 'var(--accent-break)' : 'var(--bg-surface)',
+                border: isPaused ? 'none' : '1px solid var(--border-medium)',
+                cursor: 'pointer',
+                color: isPaused ? '#fff' : 'var(--text-primary)',
+                fontSize: 'var(--fs-caption)',
+                fontWeight: 600,
+                boxShadow: isPaused ? '0 4px 16px rgba(var(--accent-break-rgb), 0.35)' : 'none',
+              }}
+            >
+              {isPaused ? <Play size={18} fill="currentColor" /> : <Coffee size={18} />}
+              {isPaused ? 'Resume Flow' : 'Take a break'}
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowEndConfirm(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '12px 20px',
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--accent-focus)',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#fff',
+                fontSize: 'var(--fs-caption)',
+                fontWeight: 600,
+                boxShadow: '0 6px 20px rgba(var(--accent-focus-rgb), 0.36)',
+              }}
+            >
+              <StopCircle size={18} />
+              Stop session
+            </motion.button>
+          </>
         )}
 
-        {/* Pause / Resume (only when not on stopwatch break) */}
-        {!(isStopwatch && isOnBreak) && (
+        {/* Countdown-only: Pause / Resume */}
+        {!isStopwatch && (
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={isPaused ? resumeSession : pauseSession}
@@ -459,13 +471,15 @@ const ActiveSessionScreen: React.FC = () => {
           </motion.button>
         )}
 
-        {/* End Session (always available) */}
-        <IconButton
-          label={isStopwatch ? 'Finish session' : 'End session early'}
-          onClick={() => setShowEndConfirm(true)}
-        >
-          <StopCircle size={18} />
-        </IconButton>
+        {/* Countdown-only: End Session */}
+        {!isStopwatch && (
+          <IconButton
+            label="End session early"
+            onClick={() => setShowEndConfirm(true)}
+          >
+            <StopCircle size={18} />
+          </IconButton>
+        )}
       </motion.div>
 
       {/* End confirmation dialog */}
