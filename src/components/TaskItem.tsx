@@ -65,9 +65,15 @@ export const AnimatedCheckbox: React.FC<{ checked: boolean; onClick: () => void 
 };
 
 export const TaskItem: React.FC<{ task: TodoTask, dragEnabled?: boolean }> = ({ task, dragEnabled = true }) => {
-  const { toggleTask, removeTask } = useOceanStore(
-    useShallow(s => ({ toggleTask: s.toggleTask, removeTask: s.removeTask }))
+  const { toggleTask, removeTask, taskChapters } = useOceanStore(
+    useShallow(s => ({ 
+      toggleTask: s.toggleTask, 
+      removeTask: s.removeTask,
+      taskChapters: s.taskChapters
+    }))
   );
+  
+  const chapter = taskChapters.find(c => c.id === task.chapterId);
   
   const [isHolding, setIsHolding] = useState(false);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,11 +94,22 @@ export const TaskItem: React.FC<{ task: TodoTask, dragEnabled?: boolean }> = ({ 
     <>
       <AnimatedCheckbox checked={task.completed} onClick={() => toggleTask(task.id)} />
       <span style={{ 
-        flex: 1, fontSize: 'var(--fs-body)', color: task.completed ? 'var(--text-tertiary)' : 'var(--text-primary)',
+        flex: 1, display: 'flex', flexDirection: 'column',
+        fontSize: 'var(--fs-body)', color: task.completed ? 'var(--text-tertiary)' : 'var(--text-primary)',
         textDecoration: task.completed ? 'line-through' : 'none', transition: 'all 0.4s ease',
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
       }}>
-        {task.text}
+        <span className="truncate">{task.text}</span>
+        {chapter && !task.completed && (
+          <span style={{ 
+            fontSize: 'var(--fs-micro)', 
+            color: chapter.colorHex || 'var(--text-secondary)',
+            fontWeight: 500,
+            marginTop: 2
+          }}>
+            {chapter.name}
+          </span>
+        )}
       </span>
       <motion.button 
         onPointerDown={startHold}

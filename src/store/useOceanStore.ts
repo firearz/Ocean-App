@@ -76,6 +76,14 @@ export interface TodoTask {
   text: string;
   completed: boolean;
   order: number;
+  chapterId?: string;
+}
+
+export interface TaskChapter {
+  id: string;
+  name: string;
+  colorHex?: string;
+  order: number;
 }
 
 const DEFAULT_SETTINGS: OceanSettings = {
@@ -137,6 +145,7 @@ interface OceanStore {
   navExpanded:   boolean;
   contextMenu:   ContextMenuState | null;
   tasks:         TodoTask[];
+  taskChapters:  TaskChapter[];
 
   // ── Actions ──────────────────────────────────────────────────────────────
   startSession: (intention: string, categoryId: string | null, durationMin: number) => void;
@@ -176,11 +185,17 @@ interface OceanStore {
   closeContextMenu: () => void;
   
   // Tasks
-  addTask: (text: string) => void;
+  addTask: (text: string, chapterId?: string) => void;
   toggleTask: (id: string) => void;
   removeTask: (id: string) => void;
   reorderTasks: (newTasks: TodoTask[]) => void;
   clearCompletedTasks: () => void;
+  
+  // Chapters
+  addChapter: (name: string, colorHex?: string) => void;
+  updateChapter: (id: string, patch: Partial<TaskChapter>) => void;
+  removeChapter: (id: string) => void;
+  reorderChapters: (newChapters: TaskChapter[]) => void;
 }
 
 let tickInterval: ReturnType<typeof setInterval> | null = null;
@@ -205,6 +220,7 @@ export const useOceanStore = create<OceanStore>()(
       navExpanded:      true,
       contextMenu:      null,
       tasks:            [],
+      taskChapters:     [],
 
       // ── Start breathing phase ────────────────────────────────────────────
       startBreathing: (intention, categoryId, durationMin, isStopwatch = false) => {
@@ -559,8 +575,8 @@ export const useOceanStore = create<OceanStore>()(
       },
 
       // ── Task Actions ─────────────────────────────────────────────────────
-      addTask: (text) => set(s => ({
-        tasks: [...s.tasks, { id: `task-${Date.now()}`, text, completed: false, order: s.tasks.length }]
+      addTask: (text, chapterId) => set(s => ({
+        tasks: [...s.tasks, { id: `task-${Date.now()}`, text, completed: false, order: s.tasks.length, chapterId }]
       })),
       toggleTask: (id) => set(s => ({
         tasks: s.tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
@@ -578,6 +594,22 @@ export const useOceanStore = create<OceanStore>()(
       clearCompletedTasks: () => set(s => ({
         tasks: s.tasks.filter(t => !t.completed)
       })),
+
+      // ── Chapter Actions ──────────────────────────────────────────────────
+      addChapter: (name, colorHex) => set(s => ({
+        taskChapters: [...s.taskChapters, { id: `chapter-${Date.now()}`, name, colorHex, order: s.taskChapters.length }]
+      })),
+      updateChapter: (id, patch) => set(s => ({
+        taskChapters: s.taskChapters.map(c => c.id === id ? { ...c, ...patch } : c)
+      })),
+      removeChapter: (id) => set(s => ({
+        taskChapters: s.taskChapters.filter(c => c.id !== id),
+        tasks: s.tasks.map(t => t.chapterId === id ? { ...t, chapterId: undefined } : t)
+      })),
+      reorderChapters: (newChapters) => set(s => {
+        const updated = newChapters.map((c, i) => ({ ...c, order: i }));
+        return { taskChapters: updated };
+      }),
     }),
     {
       name:    'ocean-store',
@@ -587,6 +619,7 @@ export const useOceanStore = create<OceanStore>()(
         recentIntentions: s.recentIntentions,
         settings:         s.settings,
         tasks:            s.tasks,
+        taskChapters:     s.taskChapters,
       }),
       // Merge new setting defaults with stored settings on rehydration
       merge: (persisted: unknown, current) => ({
